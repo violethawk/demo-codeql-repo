@@ -34,7 +34,7 @@ The core challenge is not detection — it is closing the loop:
 
 ## How It Works
 
-1. The orchestrator ingests `sample_alert_v2.json`
+1. The orchestrator ingests `sample_alert.json`
 2. The triage engine evaluates remediation eligibility
 3. A Devin session is launched with the alert context and remediation playbook
 4. Devin investigates, implements the minimal fix, and opens a PR
