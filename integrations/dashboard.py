@@ -242,6 +242,13 @@ def generate_aggregate_dashboard(
     alerts = list_alerts(db_conn)
 
     total = metrics["total"]
+
+    # Last activity timestamp
+    last_event = db_conn.execute(
+        "SELECT MAX(timestamp) FROM events",
+    ).fetchone()[0] or ""
+    last_event_display = last_event[:19].replace("T", " ") + " UTC" if last_event else "N/A"
+
     by_cwe = metrics["by_cwe"]
     by_team = metrics["by_team"]
     by_action = metrics["by_action"]
@@ -528,9 +535,7 @@ def generate_aggregate_dashboard(
   </div>
 
   <div class="footer">
-    SAGE &mdash; Security Automation &amp; Governance Engine &middot;
-    {total} findings tracked &middot;
-    The dashboard is not the product &mdash; it is evidence of a system in motion.
+    SAGE &middot; {total} findings tracked &middot; Last activity: {last_event_display}
   </div>
 
   <script>
