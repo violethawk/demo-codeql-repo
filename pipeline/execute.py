@@ -135,8 +135,9 @@ def _fix_cwe89(file_path: Path, alert: Alert) -> ExecutionResult:
     exec_indent = exec_match.group(1)
     cursor_name = exec_match.group(2)
     params_tuple = ", ".join(interpolated_vars)
+    escaped_param_sql = param_sql.replace("\\", "\\\\").replace('"', '\\"')
     new_exec_line = (
-        f'{exec_indent}{cursor_name}.execute("{param_sql}", ({params_tuple},))\n'
+        f'{exec_indent}{cursor_name}.execute("{escaped_param_sql}", ({params_tuple},))\n'
     )
 
     # Remove the query variable assignment line, replace execute line
