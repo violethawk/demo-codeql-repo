@@ -203,7 +203,7 @@ HTML = """\
         </div>
         <div class="vuln-name">SQL Injection</div>
         <div class="code-block code-vuln" id="code-CWE-89">""" + FIXED_SNIPPETS["CWE-89"]["before"] + """</div>
-        <div class="vuln-action">Policy: AUTO_REMEDIATE</div>
+        <div class="vuln-action">AUTO_REMEDIATE &mdash; local handler (fast path)</div>
       </div>
 
       <div class="vuln-card" id="card-CWE-79" onclick="remediate('CWE-79')">
@@ -213,7 +213,7 @@ HTML = """\
         </div>
         <div class="vuln-name">Cross-Site Scripting</div>
         <div class="code-block code-vuln" id="code-CWE-79">""" + FIXED_SNIPPETS["CWE-79"]["before"] + """</div>
-        <div class="vuln-action">Policy: REMEDIATE_WITH_REVIEW</div>
+        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin execution engine</div>
       </div>
 
       <div class="vuln-card" id="card-CWE-78" onclick="remediate('CWE-78')">
@@ -223,7 +223,7 @@ HTML = """\
         </div>
         <div class="vuln-name">Command Injection</div>
         <div class="code-block code-vuln" id="code-CWE-78">""" + FIXED_SNIPPETS["CWE-78"]["before"] + """</div>
-        <div class="vuln-action">Policy: REMEDIATE_WITH_REVIEW</div>
+        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin execution engine</div>
       </div>
     </div>
 
@@ -368,15 +368,44 @@ HTML = """\
           await new Promise(r => setTimeout(r, 30));
         }
 
-        // Update card
+        // Update card based on execution path
+        const devin = data.devin || {};
+        const isDevinReal = devin.mode === 'real';
+        const isDevinPath = data.routing && data.routing.security_review;
+
         if (data.disposition === 'PR_READY') {
           card.className = 'vuln-card done';
           badge.className = 'vuln-badge badge-fixed';
-          badge.textContent = 'FIXED';
-          code.textContent = fixedCode[cwe].after;
-          code.className = 'code-block code-fixed';
-          status.textContent = cwe + ' remediated successfully';
           status.className = 'status-text';
+
+          if (isDevinPath && isDevinReal) {
+            // Devin did the work — show Devin's output, not local code
+            badge.textContent = 'FIXED BY DEVIN';
+            let devinHtml = '';
+            if (devin.plan) {
+              devinHtml += '<div style="font-size:0.7rem;color:var(--cyan);font-weight:700;margin-bottom:0.3rem">DEVIN REMEDIATION</div>';
+              devinHtml += '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem"><b>Root cause:</b> ' + (devin.plan.root_cause || '').substring(0, 120) + '</div>';
+              devinHtml += '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem"><b>Strategy:</b> ' + (devin.plan.fix_strategy || '').substring(0, 120) + '</div>';
+              devinHtml += '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem"><b>Tests:</b> ' + (devin.plan.test_plan || '').substring(0, 100) + '</div>';
+            }
+            if (devin.session_id) {
+              devinHtml += '<div style="font-size:0.72rem;margin-top:0.4rem"><b>Session:</b> <span style="color:var(--cyan)">' + devin.session_id + '</span></div>';
+            }
+            if (devin.pr_url) {
+              devinHtml += '<div style="margin-top:0.3rem"><a href="' + devin.pr_url + '" style="color:var(--cyan);font-weight:700;font-size:0.78rem" target="_blank">View Devin PR &rarr;</a></div>';
+            }
+            code.innerHTML = devinHtml;
+            code.className = 'code-block code-fixed';
+            code.style.whiteSpace = 'normal';
+            status.textContent = cwe + ' remediated by Devin';
+          } else {
+            // Local handler — show the code transform
+            badge.textContent = 'FIXED';
+            code.textContent = fixedCode[cwe].after;
+            code.className = 'code-block code-fixed';
+            code.style.whiteSpace = 'pre';
+            status.textContent = cwe + ' remediated (local handler)';
+          }
         } else {
           card.className = 'vuln-card';
           badge.className = 'vuln-badge badge-vuln';
@@ -548,6 +577,16 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
                     pass
 
             routing = ROUTING_INFO.get(cwe, {})
+            devin_mode = os.environ.get("DEVIN_MODE", "stub")
+
+            # Extract Devin session data from report if present
+            devin_session = {
+                "mode": devin_mode,
+                "session_id": report.get("devin_session_id", ""),
+                "plan": report.get("remediation_plan"),
+                "insights": report.get("devin_insights"),
+                "pr_url": report.get("pr_url", ""),
+            }
 
             self._json_response(200, {
                 "cwe": cwe,
@@ -555,6 +594,7 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
                 "output": captured.getvalue(),
                 "routing": routing,
                 "notification": notif,
+                "devin": devin_session,
                 "pr": {
                     "title": pr_payload.get("title", ""),
                     "branch": pr_payload.get("branch", ""),
