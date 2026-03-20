@@ -27,7 +27,7 @@ The core challenge is not detection — it is closing the loop:
 | File | Purpose |
 |---|---|
 | `app.py` | Deliberately vulnerable Flask app with a SQL injection on lines 12–14 |
-| `sample_alert_v2.json` | Structured CodeQL alert payload consumed by the orchestrator |
+| `sample_alert.json` | Structured CodeQL alert payload consumed by the orchestrator |
 | `requirements.txt` | Python dependencies |
 
 ---
