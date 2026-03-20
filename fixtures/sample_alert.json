@@ -1,0 +1,23 @@
+{
+  "alert_id": "demo-001",
+  "rule_name": "SQL query built from user-controlled input",
+  "severity": "high",
+  "cwe": "CWE-89",
+  "language": "python",
+  "repo_name": "demo-codeql-repo",
+  "default_branch": "main",
+  "file_path": "app.py",
+  "line_range": {
+    "start": 18,
+    "end": 22
+  },
+  "vulnerable_code_snippet": [
+    "user_input = request.args.get('name', '')",
+    "query = f\"SELECT * FROM users WHERE name = '{user_input}'\"",
+    "cursor.execute(query)"
+  ],
+  "alert_description": "User-controlled input is directly interpolated into a SQL query, which can lead to SQL injection.",
+  "security_guidance": "Use parameterized queries or prepared statements instead of string interpolation when constructing SQL queries.",
+  "owner_team": "backend",
+  "auto_fix_confidence": 0.9
+}
