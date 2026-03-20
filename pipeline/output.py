@@ -18,6 +18,7 @@ def build_report(
     val_result: Optional[ValidationResult],
     pr_url: str = "",
     notification_sent: bool = False,
+    integration_mode: str = "stub",
 ) -> dict:
     """Build the final remediation report as a dict."""
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -40,6 +41,7 @@ def build_report(
             "decision_trace": "TRIAGE_REJECTED → NEEDS_HUMAN_REVIEW",
             "pr_url": "",
             "notification_sent": notification_sent,
+            "integration_mode": integration_mode,
             "timestamp": timestamp,
         }
 
@@ -61,6 +63,7 @@ def build_report(
             "decision_trace": "TRUE_POSITIVE → Eligible → Fix Failed → NEEDS_HUMAN_REVIEW",
             "pr_url": "",
             "notification_sent": notification_sent,
+            "integration_mode": integration_mode,
             "timestamp": timestamp,
         }
 
@@ -89,6 +92,7 @@ def build_report(
             ),
             "pr_url": "",
             "notification_sent": notification_sent,
+            "integration_mode": integration_mode,
             "timestamp": timestamp,
         }
 
@@ -119,6 +123,7 @@ def build_report(
         ),
         "pr_url": pr_url,
         "notification_sent": notification_sent,
+        "integration_mode": integration_mode,
         "timestamp": timestamp,
     }
 
@@ -135,12 +140,14 @@ def generate_report(
     val_result: Optional[ValidationResult],
     pr_url: str = "",
     notification_sent: bool = False,
+    integration_mode: str = "stub",
     output_path: str = "artifacts/remediation_report.json",
 ) -> dict:
     """Build and write the remediation report. Returns the report dict."""
     report = build_report(
         alert, triage_result, exec_result, val_result,
         pr_url=pr_url, notification_sent=notification_sent,
+        integration_mode=integration_mode,
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     write_report(report, output_path)
