@@ -136,6 +136,69 @@ def deliver_notification(
     )
 
 
+# ---------------------------------------------------------------------------
+# Escalation notifications
+# ---------------------------------------------------------------------------
+
+ESCALATION_CHANNELS: dict[str, str] = {
+    "remind_owner": "",       # goes to team channel
+    "escalate_manager": "#engineering-leads",
+    "sla_breach": "#security-escalations",
+}
+
+
+def build_escalation_notification(
+    alert_id: str,
+    cwe: str,
+    owner_team: str,
+    action_required: str,
+    hours_elapsed: float,
+    sla_hours: int,
+) -> NotificationPayload:
+    """Build an escalation notification for enforcement actions."""
+    team_channel = TEAM_CHANNELS.get(owner_team, DEFAULT_CHANNEL)
+
+    if action_required == "remind_owner":
+        channel = team_channel
+        status = "needs_attention"
+        message = (
+            f"Reminder: SAGE alert {alert_id} ({cwe}) has been open for "
+            f"{hours_elapsed:.0f}h. Please review or escalate."
+        )
+    elif action_required == "escalate_manager":
+        channel = ESCALATION_CHANNELS.get("escalate_manager", DEFAULT_CHANNEL)
+        status = "escalation"
+        message = (
+            f"Escalation: SAGE alert {alert_id} ({cwe}) has had no action "
+            f"for {hours_elapsed:.0f}h. Assigned team: {owner_team}."
+        )
+    elif action_required == "sla_breach":
+        channel = ESCALATION_CHANNELS.get("sla_breach", DEFAULT_CHANNEL)
+        status = "sla_breach"
+        message = (
+            f"SLA BREACH: SAGE alert {alert_id} ({cwe}) exceeded its "
+            f"{sla_hours}h SLA ({hours_elapsed:.0f}h elapsed). "
+            f"Immediate action required. Team: {owner_team}."
+        )
+    else:
+        channel = team_channel
+        status = "info"
+        message = f"SAGE alert {alert_id} ({cwe}): {action_required}"
+
+    return NotificationPayload(
+        channel=channel,
+        alert_id=alert_id,
+        rule_name="",
+        cwe=cwe,
+        disposition="ENFORCEMENT",
+        pr_url="",
+        owner_team=owner_team,
+        status=status,
+        message=message,
+        integration_mode="stub",
+    )
+
+
 # Backward-compatible alias
 def write_notification(
     payload: NotificationPayload,

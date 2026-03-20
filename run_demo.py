@@ -201,6 +201,7 @@ def process_alert(
     pr_payload = build_pr_payload(
         alert, exec_result, session.pr_url,
         integration_mode=session.integration_mode,
+        review_required=review_required,
     )
     pr_result = deliver_pr(pr_payload, repo_root=repo_root)
     _print(f"  PR payload:     {pr_result.artifact_path} ({pr_result.method})")

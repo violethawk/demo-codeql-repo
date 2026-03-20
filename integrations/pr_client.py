@@ -36,6 +36,14 @@ class PullRequestPayload:
     status: str  # "open" | "merged" | "closed"
     url: str
     integration_mode: str = "stub"
+    reviewers: List[str] = None  # GitHub usernames for code review
+    labels: List[str] = None  # Labels to apply to the PR
+
+    def __post_init__(self):
+        if self.reviewers is None:
+            self.reviewers = []
+        if self.labels is None:
+            self.labels = []
 
 
 @dataclass
@@ -56,11 +64,23 @@ class PRDeliveryResult:
 ARTIFACT_PATH = "artifacts/pr_payload.json"
 
 
+# Maps owner_team to GitHub usernames for code review assignment.
+# In production, this would come from a config file or GitHub CODEOWNERS.
+TEAM_REVIEWERS: dict[str, list[str]] = {
+    "backend": [],
+    "frontend": [],
+    "platform": [],
+    "infra": [],
+}
+SECURITY_REVIEWERS: list[str] = []  # GitHub usernames for security review
+
+
 def build_pr_payload(
     alert: Alert,
     exec_result: ExecutionResult,
     pr_url: str,
     integration_mode: str = "stub",
+    review_required: bool = False,
 ) -> PullRequestPayload:
     """Build a structured PR payload from remediation results."""
     branch = f"codeql-fix/{alert.alert_id}"
@@ -71,6 +91,7 @@ def build_pr_payload(
         f"**Alert ID**: {alert.alert_id}",
         f"**Severity**: {alert.severity}",
         f"**File**: `{alert.file_path}`",
+        f"**Policy**: {'Security review required' if review_required else 'Standard review'}",
         "",
         "### Root Cause",
         exec_result.root_cause,
@@ -86,15 +107,27 @@ def build_pr_payload(
         "and branch protection policies in production environments.",
     ]
 
+    # Assign reviewers based on team + policy
+    reviewers = list(TEAM_REVIEWERS.get(alert.owner_team, []))
+    if review_required:
+        reviewers.extend(r for r in SECURITY_REVIEWERS if r not in reviewers)
+
+    # Labels
+    labels = [f"cwe:{alert.cwe}", f"severity:{alert.severity}", "sage:auto-remediation"]
+    if review_required:
+        labels.append("security-review-required")
+
     return PullRequestPayload(
         repo=f"violethawk/{alert.repo_name}",
         branch=branch,
-        title=f"[CodeQL] Fix {alert.rule_name} in {alert.file_path}",
+        title=f"[SAGE] Fix {alert.rule_name} in {alert.file_path}",
         body="\n".join(body_lines),
         files_changed=exec_result.files_changed,
         status="open",
         url=pr_url,
         integration_mode=integration_mode,
+        reviewers=reviewers,
+        labels=labels,
     )
 
 
@@ -196,6 +229,22 @@ def _deliver_pr_github(
         )
 
     pr_url = pr_result.stdout.strip()
+
+    # Assign reviewers
+    if payload.reviewers:
+        subprocess.run(
+            ["gh", "pr", "edit", pr_url, "--add-reviewer",
+             ",".join(payload.reviewers)],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+
+    # Apply labels
+    if payload.labels:
+        subprocess.run(
+            ["gh", "pr", "edit", pr_url, "--add-label",
+             ",".join(payload.labels)],
+            capture_output=True, text=True, cwd=repo_root,
+        )
 
     # Also write the artifact for audit
     Path(ARTIFACT_PATH).parent.mkdir(parents=True, exist_ok=True)

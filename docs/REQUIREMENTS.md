@@ -360,11 +360,13 @@ The submission should demonstrate that you understand:
 | FR-4: Restrict auto-remediation | Implemented | Policy registry with 4 actions |
 | FR-5: Devin execution | Implemented | `integrations/devin_client.py` (stub + real API) |
 | FR-6: Create PR | Implemented | `integrations/pr_client.py` (stub + gh CLI) |
-| FR-7: Route to stakeholders | Implemented | `integrations/notify.py` (team-based routing) |
-| FR-8: State transitions | Implemented | `pipeline/store.py` (lifecycle states + events) |
-| FR-9: Enforcement | Implemented | `pipeline/enforcement.py` (SLA + escalation) |
-| FR-10: Escalation paths | Partial | Enforcement checks exist; delivery stubs only |
-| FR-11: Audit trail | Implemented | `pipeline/store.py` (events table) |
+| FR-7: Route to stakeholders | Implemented | `integrations/pr_client.py` (reviewer assignment + labels), `integrations/notify.py` (team routing) |
+| FR-8: State transitions | Implemented | `pipeline/store.py` (lifecycle states + events), `run_override.py` (validated transitions) |
+| FR-9: Enforcement | Implemented | `pipeline/enforcement.py` (SLA + escalation), `run_enforce.py` (cron-ready runner) |
+| FR-10: Escalation paths | Implemented | `integrations/notify.py` (escalation notifications), `run_enforce.py` (auto-escalate on SLA breach) |
+| FR-11: Audit trail | Implemented | `pipeline/store.py` (events table, enforcement + override logging) |
 | FR-12: Status visibility | Implemented | `integrations/dashboard.py` (single + aggregate) |
-| NFR-1–7 | Implemented | Policy-bounded, explainable, traceable |
+| NFR-1–3 | Implemented | Policy-bounded, explainable, traceable |
+| NFR-4: Human override | Implemented | `run_override.py` (merge, close, reject, defer, escalate, reopen + transition validation) |
+| NFR-5–7 | Implemented | Safe failure, low overhead, extensible |
 | GR-1–5 | Implemented | Ownership, separation, evidence |
