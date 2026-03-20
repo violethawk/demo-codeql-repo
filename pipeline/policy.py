@@ -44,6 +44,17 @@ REMEDIATION_POLICIES: dict[str, RemediationPolicy] = {
             "the owning team for manual review."
         ),
     ),
+    "CWE-78": RemediationPolicy(
+        cwe="CWE-78",
+        name="OS Command Injection",
+        auto_fix=False,
+        escalation_note=(
+            "Command injection fixes require understanding the full "
+            "invocation context (shell=True, subprocess args, user input "
+            "boundaries). Safe auto-remediation is not feasible without "
+            "broader code analysis. Escalate to the owning team."
+        ),
+    ),
 }
 
 
