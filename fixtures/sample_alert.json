@@ -9,7 +9,7 @@
   "file_path": "app.py",
   "line_range": {
     "start": 18,
-    "end": 22
+    "end": 23
   },
   "vulnerable_code_snippet": [
     "user_input = request.args.get('name', '')",

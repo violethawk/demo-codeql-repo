@@ -1,15 +1,16 @@
-"""PR Creation Layer: Generate pull request payloads.
+"""PR Creation Layer: Generate pull request payloads and deliver them.
 
-Integration boundary:
-    build_pr_payload()  → assembles a PullRequestPayload dataclass
-    deliver_pr()        → stub: writes JSON artifact to disk
-                           real: would POST to GitHub API
+Integration modes controlled by PR_MODE environment variable:
 
-To connect to the real GitHub API, replace the body of deliver_pr()
-with an authenticated POST to /repos/{owner}/{repo}/pulls.
+    PR_MODE=stub  (default) -- Writes JSON artifact to disk.
+    PR_MODE=github         -- Creates a real branch + PR via `gh` CLI.
+                              Requires `gh auth status` to pass.
 """
 
 import json
+import os
+import shutil
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List
@@ -42,8 +43,9 @@ class PRDeliveryResult:
     """Result of attempting to deliver / create the PR."""
 
     delivered: bool
-    method: str  # "stub_artifact" | "github_api"
+    method: str  # "stub_artifact" | "github_cli"
     artifact_path: str = ""
+    pr_url: str = ""
     error: str = ""
 
 
@@ -97,31 +99,124 @@ def build_pr_payload(
 
 
 # ---------------------------------------------------------------------------
-# Delivery (stub writes JSON; real would POST to GitHub)
+# Delivery: stub (JSON artifact) or github (gh CLI)
 # ---------------------------------------------------------------------------
 
 
-def deliver_pr(
+def _get_pr_mode() -> str:
+    return os.environ.get("PR_MODE", "stub")
+
+
+def _gh_available() -> bool:
+    return shutil.which("gh") is not None
+
+
+def _deliver_pr_github(
+    payload: PullRequestPayload,
+    repo_root: str,
+) -> PRDeliveryResult:
+    """Create a real branch and PR via the `gh` CLI.
+
+    Prerequisites:
+        - `gh` CLI installed and authenticated (`gh auth status`)
+        - Current directory is a git repo with a remote
+    """
+    if not _gh_available():
+        return PRDeliveryResult(
+            delivered=False,
+            method="github_cli",
+            error="gh CLI not found. Install it or switch to PR_MODE=stub.",
+        )
+
+    # Verify gh is authenticated
+    auth_check = subprocess.run(
+        ["gh", "auth", "status"],
+        capture_output=True, text=True, cwd=repo_root,
+    )
+    if auth_check.returncode != 0:
+        return PRDeliveryResult(
+            delivered=False,
+            method="github_cli",
+            error=f"gh not authenticated: {auth_check.stderr.strip()}",
+        )
+
+    # Create and switch to branch
+    subprocess.run(
+        ["git", "checkout", "-b", payload.branch],
+        capture_output=True, text=True, cwd=repo_root,
+    )
+
+    # Stage changed files
+    for f in payload.files_changed:
+        subprocess.run(
+            ["git", "add", f],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+
+    # Commit
+    commit_result = subprocess.run(
+        ["git", "commit", "-m", payload.title],
+        capture_output=True, text=True, cwd=repo_root,
+    )
+    if commit_result.returncode != 0:
+        return PRDeliveryResult(
+            delivered=False,
+            method="github_cli",
+            error=f"git commit failed: {commit_result.stderr.strip()}",
+        )
+
+    # Push
+    push_result = subprocess.run(
+        ["git", "push", "-u", "origin", payload.branch],
+        capture_output=True, text=True, cwd=repo_root,
+    )
+    if push_result.returncode != 0:
+        return PRDeliveryResult(
+            delivered=False,
+            method="github_cli",
+            error=f"git push failed: {push_result.stderr.strip()}",
+        )
+
+    # Create PR
+    pr_result = subprocess.run(
+        [
+            "gh", "pr", "create",
+            "--title", payload.title,
+            "--body", payload.body,
+            "--base", "main",
+            "--head", payload.branch,
+        ],
+        capture_output=True, text=True, cwd=repo_root,
+    )
+    if pr_result.returncode != 0:
+        return PRDeliveryResult(
+            delivered=False,
+            method="github_cli",
+            error=f"gh pr create failed: {pr_result.stderr.strip()}",
+        )
+
+    pr_url = pr_result.stdout.strip()
+
+    # Also write the artifact for audit
+    Path(ARTIFACT_PATH).parent.mkdir(parents=True, exist_ok=True)
+    payload_dict = asdict(payload)
+    payload_dict["url"] = pr_url
+    payload_dict["integration_mode"] = "github"
+    Path(ARTIFACT_PATH).write_text(json.dumps(payload_dict, indent=2) + "\n")
+
+    return PRDeliveryResult(
+        delivered=True,
+        method="github_cli",
+        artifact_path=ARTIFACT_PATH,
+        pr_url=pr_url,
+    )
+
+
+def _deliver_pr_stub(
     payload: PullRequestPayload,
     output_path: str = ARTIFACT_PATH,
 ) -> PRDeliveryResult:
-    """Deliver the PR payload.
-
-    Stub mode:  serialize to a JSON artifact on disk.
-    Real mode:  would POST to GitHub API (placeholder).
-
-    To implement real delivery, replace the body with:
-
-        import requests
-        resp = requests.post(
-            f"https://api.github.com/repos/{payload.repo}/pulls",
-            headers={"Authorization": f"Bearer {github_token}", ...},
-            json={"title": payload.title, "body": payload.body,
-                  "head": payload.branch, "base": "main"},
-        )
-        resp.raise_for_status()
-        return PRDeliveryResult(delivered=True, method="github_api")
-    """
+    """Write PR payload as a JSON artifact (no network calls)."""
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     Path(output_path).write_text(json.dumps(asdict(payload), indent=2) + "\n")
     return PRDeliveryResult(
@@ -129,6 +224,22 @@ def deliver_pr(
         method="stub_artifact",
         artifact_path=output_path,
     )
+
+
+def deliver_pr(
+    payload: PullRequestPayload,
+    output_path: str = ARTIFACT_PATH,
+    repo_root: str = "",
+) -> PRDeliveryResult:
+    """Deliver a PR using the configured mode.
+
+    Set PR_MODE=github to create real branches and PRs via `gh`.
+    Defaults to stub mode (JSON artifact on disk).
+    """
+    mode = _get_pr_mode()
+    if mode == "github" and repo_root:
+        return _deliver_pr_github(payload, repo_root)
+    return _deliver_pr_stub(payload, output_path)
 
 
 # Backward-compatible alias

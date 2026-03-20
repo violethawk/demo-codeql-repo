@@ -1,3 +1,4 @@
+import os
 import sqlite3
 
 from flask import Flask, request, jsonify
@@ -17,12 +18,22 @@ def get_db():
 def search_user():
     user_input = request.args.get("name", "")
     query = f"SELECT * FROM users WHERE name = '{user_input}'"
-    conn = get_db()
-    cursor = conn.cursor()
+    cursor = get_db().cursor()
     cursor.execute(query)
-    results = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return jsonify(results)
+    return jsonify([dict(r) for r in cursor.fetchall()])
+
+
+@app.route("/search_page")
+def search_page():
+    user_input = request.args.get("query", "")
+    return f"<h1>Results for {user_input}</h1>"
+
+
+@app.route("/ping")
+def ping_host():
+    host = request.args.get("host", "127.0.0.1")
+    os.system("ping -c 1 " + host)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/health")

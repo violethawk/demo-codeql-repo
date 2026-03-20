@@ -1,0 +1,22 @@
+{
+  "alert_id": "demo-003",
+  "rule_name": "Command built from user-controlled input",
+  "severity": "high",
+  "cwe": "CWE-78",
+  "language": "python",
+  "repo_name": "demo-codeql-repo",
+  "default_branch": "main",
+  "file_path": "app.py",
+  "line_range": {
+    "start": 33,
+    "end": 36
+  },
+  "vulnerable_code_snippet": [
+    "host = request.args.get('host', '127.0.0.1')",
+    "os.system('ping -c 1 ' + host)"
+  ],
+  "alert_description": "User-controlled input is concatenated into a shell command passed to os.system(), enabling arbitrary command execution.",
+  "security_guidance": "Use subprocess.run() with a list of arguments instead of os.system() with string concatenation. Never pass user input through a shell.",
+  "owner_team": "platform",
+  "auto_fix_confidence": 0.8
+}
