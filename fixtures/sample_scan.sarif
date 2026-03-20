@@ -1,0 +1,102 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "version": "2.16.0",
+          "rules": [
+            {
+              "id": "py/sql-injection",
+              "shortDescription": { "text": "SQL query built from user-controlled input" },
+              "properties": {
+                "tags": ["security", "external/cwe/cwe-089"],
+                "security-severity": "8.1"
+              },
+              "help": { "text": "Use parameterized queries instead of string formatting." }
+            },
+            {
+              "id": "py/reflective-xss",
+              "shortDescription": { "text": "Reflected cross-site scripting" },
+              "properties": {
+                "tags": ["security", "external/cwe/cwe-079"],
+                "security-severity": "7.8"
+              },
+              "help": { "text": "Escape user input before embedding in HTML." }
+            },
+            {
+              "id": "py/command-line-injection",
+              "shortDescription": { "text": "Command built from user-controlled input" },
+              "properties": {
+                "tags": ["security", "external/cwe/cwe-078"],
+                "security-severity": "9.1"
+              },
+              "help": { "text": "Use subprocess with argument lists instead of shell commands." }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "py/sql-injection",
+          "message": { "text": "This query depends on a user-provided value." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "app.py" },
+                "region": {
+                  "startLine": 18,
+                  "endLine": 23,
+                  "snippet": { "text": "    query = f\"SELECT * FROM users WHERE name = '{user_input}'\"" }
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "8.1"
+          }
+        },
+        {
+          "ruleId": "py/reflective-xss",
+          "message": { "text": "Cross-site scripting vulnerability due to user-controlled value in HTML response." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "app.py" },
+                "region": {
+                  "startLine": 27,
+                  "endLine": 30,
+                  "snippet": { "text": "    return f\"<h1>Results for {user_input}</h1>\"" }
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "7.8"
+          }
+        },
+        {
+          "ruleId": "py/command-line-injection",
+          "message": { "text": "This command line depends on a user-provided value." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "app.py" },
+                "region": {
+                  "startLine": 33,
+                  "endLine": 36,
+                  "snippet": { "text": "    os.system(\"ping -c 1 \" + host)" }
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "9.1"
+          }
+        }
+      ]
+    }
+  ]
+}

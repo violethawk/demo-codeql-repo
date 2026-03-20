@@ -122,9 +122,7 @@ def build_report(
             f"Minimal change: {len(exec_result.files_changed)} file(s) modified. "
             f"Only necessary lines were changed."
         ),
-        "residual_risk": (
-            "None. Parameterized query fully neutralizes the SQL injection vector."
-        ),
+        "residual_risk": exec_result.residual_risk or "None identified.",
         "decision_trace": (
             "TRUE_POSITIVE → Eligible → Fix Applied → "
             "Validation Passed → PR_READY"

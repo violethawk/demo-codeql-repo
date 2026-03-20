@@ -53,6 +53,15 @@ class NotificationDeliveryResult:
 
 ARTIFACT_PATH = "artifacts/notification_payload.json"
 
+# Route notifications to the appropriate team channel
+TEAM_CHANNELS: dict[str, str] = {
+    "backend": "#backend-security",
+    "frontend": "#frontend-security",
+    "platform": "#platform-security",
+    "infra": "#infra-security",
+}
+DEFAULT_CHANNEL = "#security-alerts"
+
 
 def build_notification(
     alert: Alert,
@@ -61,6 +70,8 @@ def build_notification(
     integration_mode: str = "stub",
 ) -> NotificationPayload:
     """Build a notification payload for the owning team."""
+    channel = TEAM_CHANNELS.get(alert.owner_team, DEFAULT_CHANNEL)
+
     if disposition == "PR_READY":
         status = "ready_for_review"
         message = (
@@ -75,7 +86,7 @@ def build_notification(
         )
 
     return NotificationPayload(
-        channel="backend-security",
+        channel=channel,
         alert_id=alert.alert_id,
         rule_name=alert.rule_name,
         cwe=alert.cwe,

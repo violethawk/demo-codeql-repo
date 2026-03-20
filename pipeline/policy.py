@@ -1,24 +1,37 @@
-"""Policy Layer: Remediation eligibility rules per CWE.
+"""Policy Layer: Governance decisions per CWE.
 
-Each policy entry defines:
-    - whether auto-fix is supported
-    - the expected handler name in the execute layer
-    - a human-readable note for escalation
+The policy engine is the heart of SAGE. It separates signal from action
+by combining severity, exploitability, and fix confidence into a
+governance decision.
+
+Each policy maps to one of four actions:
+
+    AUTO_REMEDIATE         Fix automatically, standard code review
+    REMEDIATE_WITH_REVIEW  Fix automatically, require security reviewer
+    ESCALATE               No auto-fix; route to owning team + security
+    DEFER                  Low-risk; log and revisit later
 
 To add a new CWE:
     1. Add an entry to REMEDIATION_POLICIES below.
-    2. If auto_fix is True, register a handler in pipeline/execute.py.
-    3. If auto_fix is False, the system will route to NEEDS_HUMAN_REVIEW.
+    2. If the action includes remediation, register a handler in execute.py.
 """
 
 from dataclasses import dataclass
+
+# Policy actions — the four governance outcomes
+AUTO_REMEDIATE = "AUTO_REMEDIATE"
+REMEDIATE_WITH_REVIEW = "REMEDIATE_WITH_REVIEW"
+ESCALATE = "ESCALATE"
+DEFER = "DEFER"
 
 
 @dataclass
 class RemediationPolicy:
     cwe: str
     name: str
-    auto_fix: bool
+    action: str  # one of the four actions above
+    fix_confidence: str  # HIGH, MEDIUM, LOW
+    sla_hours: int  # hours before escalation
     escalation_note: str
 
 
@@ -30,29 +43,53 @@ REMEDIATION_POLICIES: dict[str, RemediationPolicy] = {
     "CWE-89": RemediationPolicy(
         cwe="CWE-89",
         name="SQL Injection",
-        auto_fix=True,
+        action=AUTO_REMEDIATE,
+        fix_confidence="HIGH",
+        sla_hours=24,
         escalation_note="",
     ),
     "CWE-79": RemediationPolicy(
         cwe="CWE-79",
         name="Cross-Site Scripting (XSS)",
-        auto_fix=False,
+        action=REMEDIATE_WITH_REVIEW,
+        fix_confidence="MEDIUM",
+        sla_hours=24,
         escalation_note=(
-            "XSS fixes depend heavily on the templating engine and output "
-            "context (HTML body, attribute, script). Auto-remediation is not "
-            "safe without understanding the rendering pipeline. Escalate to "
-            "the owning team for manual review."
+            "XSS fixes are context-dependent. Auto-fix applied but "
+            "security reviewer must verify the output context."
         ),
     ),
     "CWE-78": RemediationPolicy(
         cwe="CWE-78",
         name="OS Command Injection",
-        auto_fix=False,
+        action=REMEDIATE_WITH_REVIEW,
+        fix_confidence="MEDIUM",
+        sla_hours=24,
         escalation_note=(
-            "Command injection fixes require understanding the full "
-            "invocation context (shell=True, subprocess args, user input "
-            "boundaries). Safe auto-remediation is not feasible without "
-            "broader code analysis. Escalate to the owning team."
+            "Command injection fix replaces shell invocation with argument "
+            "lists. Security reviewer must verify no residual shell usage."
+        ),
+    ),
+    "CWE-798": RemediationPolicy(
+        cwe="CWE-798",
+        name="Hardcoded Credentials",
+        action=ESCALATE,
+        fix_confidence="LOW",
+        sla_hours=12,
+        escalation_note=(
+            "Hardcoded credentials require secret rotation and vault "
+            "integration. Cannot be safely auto-remediated."
+        ),
+    ),
+    "CWE-287": RemediationPolicy(
+        cwe="CWE-287",
+        name="Improper Authentication",
+        action=ESCALATE,
+        fix_confidence="LOW",
+        sla_hours=12,
+        escalation_note=(
+            "Authentication logic fixes require understanding the full "
+            "auth flow. Escalate to owning team for manual review."
         ),
     ),
 }

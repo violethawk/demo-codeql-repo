@@ -1,37 +1,37 @@
-"""Triage Layer: Deterministic rule-based eligibility check.
+"""Triage Layer: Deterministic rule-based governance decision.
 
-Uses the policy registry to decide whether a CWE is recognized and
-whether auto-fix is supported.
+Uses the policy registry to classify each finding and assign one of
+four actions: AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE, DEFER.
 """
 
 from dataclasses import dataclass
 from typing import List
 
 from pipeline.ingest import Alert
-from pipeline.policy import get_policy
+from pipeline.policy import (
+    AUTO_REMEDIATE,
+    DEFER,
+    ESCALATE,
+    REMEDIATE_WITH_REVIEW,
+    get_policy,
+)
 
-ELIGIBLE_SEVERITIES = {"high"}
+ELIGIBLE_SEVERITIES = {"high", "critical"}
 
 
 @dataclass
 class TriageResult:
     eligible: bool
     auto_fixable: bool
+    action: str  # AUTO_REMEDIATE | REMEDIATE_WITH_REVIEW | ESCALATE | DEFER
     reasons: List[str]
+    sla_hours: int = 0
 
 
 def triage(alert: Alert) -> TriageResult:
-    """Determine if an alert is eligible for automatic remediation.
+    """Classify an alert and assign a governance action.
 
-    Eligible (recognized by the system) if ALL conditions are met:
-    - severity is high
-    - CWE has a registered policy
-    - file_path is present
-    - vulnerable_code_snippet is present and non-empty
-
-    Auto-fixable only if the policy has auto_fix=True.
-    Recognized but non-auto-fixable CWEs are routed to NEEDS_HUMAN_REVIEW
-    with a clear escalation note.
+    Returns a TriageResult with the policy-driven action.
     """
     reasons: List[str] = []
 
@@ -51,18 +51,27 @@ def triage(alert: Alert) -> TriageResult:
         reasons.append("vulnerable_code_snippet is empty")
 
     if reasons:
-        return TriageResult(eligible=False, auto_fixable=False, reasons=reasons)
+        return TriageResult(
+            eligible=False,
+            auto_fixable=False,
+            action=ESCALATE,
+            reasons=reasons,
+        )
 
-    # Policy exists and basic checks passed -- check auto_fix flag
-    auto_fixable = policy.auto_fix if policy else False
-    if not auto_fixable and policy:
+    # Policy exists and basic checks passed — apply the policy action
+    action = policy.action
+    auto_fixable = action in (AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW)
+    sla_hours = policy.sla_hours
+
+    if not auto_fixable and policy.escalation_note:
         reasons.append(
-            f"Policy for {alert.cwe} ({policy.name}) does not support "
-            f"auto-fix: {policy.escalation_note}"
+            f"Policy for {alert.cwe} ({policy.name}): {policy.escalation_note}"
         )
 
     return TriageResult(
         eligible=True,
         auto_fixable=auto_fixable,
+        action=action,
         reasons=reasons,
+        sla_hours=sla_hours,
     )

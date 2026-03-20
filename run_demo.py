@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Run the full CodeQL remediation control loop.
+"""SAGE — Security Automation & Governance Engine
 
-    alert -> triage -> devin -> remediation -> validate
-         -> PR -> notification -> audit -> dashboard
+    Detection → Decision → Execution → Review → Enforcement → Evidence
 """
 
 import sys
@@ -11,9 +10,11 @@ from pathlib import Path
 
 from pipeline.ingest import Alert, load_alert
 from pipeline.triage import triage
+from pipeline.policy import AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE, DEFER
 from pipeline.execute import execute
 from pipeline.validate import validate
 from pipeline.output import generate_report
+from pipeline import store
 
 from integrations.devin_client import create_session, build_prompt, _get_mode
 from integrations.pr_client import build_pr_payload, deliver_pr
@@ -24,40 +25,50 @@ from integrations.dashboard import generate_dashboard
 SEPARATOR = "-" * 56
 
 
-def main() -> int:
-    alert_path = sys.argv[1] if len(sys.argv) > 1 else "fixtures/sample_alert.json"
-    repo_root = sys.argv[2] if len(sys.argv) > 2 else "target_repo"
+def process_alert(
+    alert_path: str,
+    repo_root: str = "target_repo",
+    *,
+    db_conn=None,
+    quiet: bool = False,
+) -> dict:
+    """Run the full SAGE pipeline for a single alert. Returns the report dict."""
+    def _print(*args, **kwargs):
+        if not quiet:
+            print(*args, **kwargs)
+
     mode = _get_mode()
 
-    print()
-    print(SEPARATOR)
-    print("  CodeQL Remediation Control Loop")
-    print(SEPARATOR)
-    print(f"  Alert file:  {alert_path}")
-    print(f"  Target repo: {repo_root}")
-    print(f"  Devin mode:  {mode}")
-    print(SEPARATOR)
-    print()
+    _print()
+    _print(SEPARATOR)
+    _print("  SAGE — Security Automation & Governance Engine")
+    _print(SEPARATOR)
+    _print(f"  Alert file:  {alert_path}")
+    _print(f"  Target repo: {repo_root}")
+    _print(f"  Devin mode:  {mode}")
+    _print(SEPARATOR)
+    _print()
 
-    # 1. Ingest
-    print("[1/9] Ingesting alert...")
+    # 1. Detection — ingest finding from CodeQL
+    _print("[1/9] Ingesting alert...")
     alert = load_alert(alert_path)
-    print(f"  Alert ID:  {alert.alert_id}")
-    print(f"  Rule:      {alert.rule_name}")
-    print(f"  CWE:       {alert.cwe}")
-    print(f"  Severity:  {alert.severity}")
-    print(f"  File:      {alert.file_path}")
-    print(f"  Lines:     {alert.line_range.start}-{alert.line_range.end}")
-    print()
+    _print(f"  Alert ID:  {alert.alert_id}")
+    _print(f"  Rule:      {alert.rule_name}")
+    _print(f"  CWE:       {alert.cwe}")
+    _print(f"  Severity:  {alert.severity}")
+    _print(f"  File:      {alert.file_path}")
+    _print(f"  Lines:     {alert.line_range.start}-{alert.line_range.end}")
+    _print()
 
-    # 2. Triage
-    print("[2/9] Triaging alert...")
+    # 2. Decision — policy engine classifies and assigns action
+    _print("[2/9] Policy decision...")
     triage_result = triage(alert)
+    action = triage_result.action
 
     if not triage_result.eligible:
-        print("  Result: NOT ELIGIBLE")
+        _print(f"  Action: {action} (not eligible)")
         for reason in triage_result.reasons:
-            print(f"    - {reason}")
+            _print(f"    - {reason}")
         session = create_session(alert, "NEEDS_HUMAN_REVIEW", "LOW")
         notification = build_notification(
             alert, "NEEDS_HUMAN_REVIEW", "",
@@ -69,13 +80,37 @@ def main() -> int:
             notification_sent=True,
             integration_mode=session.integration_mode,
         )
-        _finalize(alert, "NOT ELIGIBLE", report, session)
-        return 0
+        if db_conn:
+            store.record_alert(
+                db_conn, alert, report,
+                policy_action=action, sla_hours=triage_result.sla_hours,
+            )
+        _finalize(alert, action, report, session, quiet=quiet)
+        return report
 
-    if not triage_result.auto_fixable:
-        print("  Result: RECOGNIZED but NOT AUTO-FIXABLE")
+    if action == DEFER:
+        _print(f"  Action: DEFER (low-risk, log and revisit)")
+        report = generate_report(
+            alert, triage_result, None, None,
+            integration_mode="stub",
+        )
+        report["disposition"] = "DEFERRED"
+        report["confidence"] = "N/A"
+        if db_conn:
+            store.record_alert(
+                db_conn, alert, report,
+                policy_action=DEFER, sla_hours=triage_result.sla_hours,
+            )
+        _finalize(alert, DEFER, report, type("S", (), {
+            "session_id": "N/A", "integration_mode": "stub",
+            "pr_url": "", "disposition": "DEFERRED",
+        })(), quiet=quiet)
+        return report
+
+    if action == ESCALATE:
+        _print(f"  Action: ESCALATE (requires human review)")
         for reason in triage_result.reasons:
-            print(f"    - {reason}")
+            _print(f"    - {reason}")
         session = create_session(alert, "NEEDS_HUMAN_REVIEW", "MEDIUM")
         notification = build_notification(
             alert, "NEEDS_HUMAN_REVIEW", "",
@@ -87,43 +122,57 @@ def main() -> int:
             notification_sent=True,
             integration_mode=session.integration_mode,
         )
-        _finalize(alert, "RECOGNIZED (escalated)", report, session)
-        return 0
+        if db_conn:
+            store.record_alert(
+                db_conn, alert, report,
+                policy_action=ESCALATE, sla_hours=triage_result.sla_hours,
+            )
+        _finalize(alert, ESCALATE, report, session, quiet=quiet)
+        return report
 
-    print("  Result: ELIGIBLE for auto-remediation")
-    print()
+    # AUTO_REMEDIATE or REMEDIATE_WITH_REVIEW
+    review_required = action == REMEDIATE_WITH_REVIEW
+    _print(f"  Action: {action}")
+    if review_required:
+        _print("  Note: security reviewer required on PR")
+    _print()
 
-    # 3. Devin session
-    print("[3/9] Creating Devin remediation session...")
+    # 3. Execution — Devin generates the remediation
+    _print("[3/9] Creating Devin remediation session...")
     prompt = build_prompt(alert)
-    print(f"  Mode:        {mode}")
-    print(f"  Prompt task: {prompt['task']}")
-    print(f"  Target:      {prompt['alert']['file_path']}")
-    print()
+    _print(f"  Mode:        {mode}")
+    _print(f"  Prompt task: {prompt['task']}")
+    _print(f"  Target:      {prompt['alert']['file_path']}")
+    _print()
 
-    # 4. Execute fix
-    print("[4/9] Applying fix...")
+    # 4. Apply fix
+    _print("[4/9] Applying fix...")
     exec_result = execute(alert, repo_root)
     if not exec_result.success:
-        print(f"  Error: {exec_result.error}")
+        _print(f"  Error: {exec_result.error}")
         session = create_session(alert, "NEEDS_HUMAN_REVIEW", "LOW")
         report = generate_report(
             alert, triage_result, exec_result, None,
             integration_mode=session.integration_mode,
         )
-        _finalize(alert, "ELIGIBLE", report, session)
-        return 1
+        if db_conn:
+            store.record_alert(
+                db_conn, alert, report,
+                policy_action=action, sla_hours=triage_result.sla_hours,
+            )
+        _finalize(alert, action, report, session, quiet=quiet)
+        return report
 
-    print(f"  {exec_result.summary}")
-    print()
+    _print(f"  {exec_result.summary}")
+    _print()
 
     # 5. Validate
     target_file = str(Path(repo_root) / alert.file_path)
-    print("[5/9] Validating fix...")
+    _print("[5/9] Validating fix...")
     val_result = validate(target_file)
     for step in val_result.steps:
-        print(f"  {step.command} -> {step.result}")
-    print()
+        _print(f"  {step.command} -> {step.result}")
+    _print()
 
     if not val_result.passed:
         session = create_session(alert, "NEEDS_HUMAN_REVIEW", "MEDIUM")
@@ -131,47 +180,65 @@ def main() -> int:
             alert, triage_result, exec_result, val_result,
             integration_mode=session.integration_mode,
         )
-        _finalize(alert, "ELIGIBLE", report, session)
-        return 1
+        if db_conn:
+            store.record_alert(
+                db_conn, alert, report,
+                policy_action=action, sla_hours=triage_result.sla_hours,
+            )
+        _finalize(alert, action, report, session, quiet=quiet)
+        return report
 
-    # 6. Devin session result
-    print("[6/9] Devin session complete...")
+    # 6. Devin session complete
+    _print("[6/9] Devin session complete...")
     session = create_session(alert, "PR_READY", "HIGH")
-    print(f"  Session ID:  {session.session_id}")
-    print(f"  Disposition: {session.disposition}")
-    print(f"  PR URL:      {session.pr_url}")
-    print()
+    _print(f"  Session ID:  {session.session_id}")
+    _print(f"  Disposition: {session.disposition}")
+    _print(f"  PR URL:      {session.pr_url}")
+    _print()
 
-    # 7. PR + Notification
-    print("[7/9] Generating PR and notification payloads...")
+    # 7. Review & Routing — PR + notification to right humans
+    _print("[7/9] Routing to reviewers...")
     pr_payload = build_pr_payload(
         alert, exec_result, session.pr_url,
         integration_mode=session.integration_mode,
     )
-    pr_result = deliver_pr(pr_payload)
-    print(f"  PR payload:     {pr_result.artifact_path} ({pr_result.method})")
+    pr_result = deliver_pr(pr_payload, repo_root=repo_root)
+    _print(f"  PR payload:     {pr_result.artifact_path} ({pr_result.method})")
+    if pr_result.pr_url:
+        session.pr_url = pr_result.pr_url
+
+    if review_required:
+        _print("  Security reviewer: REQUIRED")
 
     notification = build_notification(
         alert, session.disposition, session.pr_url,
         integration_mode=session.integration_mode,
     )
     notif_result = deliver_notification(notification)
-    print(f"  Notification:   {notif_result.artifact_path} ({notif_result.method})")
-    print()
+    _print(f"  Notification:   {notif_result.artifact_path} ({notif_result.method})")
+    _print()
 
-    # 8. Audit report
-    print("[8/9] Generating remediation report...")
+    # 8. Audit — evidence for compliance
+    _print("[8/9] Recording audit evidence...")
     report = generate_report(
         alert, triage_result, exec_result, val_result,
         pr_url=session.pr_url, notification_sent=True,
         integration_mode=session.integration_mode,
     )
-    print("  Written: artifacts/remediation_report.json")
-    print()
+    report["policy_action"] = action
+    report["review_required"] = review_required
+    _print("  Written: artifacts/remediation_report.json")
+    _print()
 
-    # 9. Dashboard + summary
-    _finalize(alert, "ELIGIBLE", report, session)
-    return 0
+    if db_conn:
+        store.record_alert(
+            db_conn, alert, report,
+            policy_action=action, sla_hours=triage_result.sla_hours,
+        )
+
+    # 9. Dashboard
+    _finalize(alert, action, report, session, quiet=quiet)
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -180,32 +247,36 @@ def main() -> int:
 
 
 def _finalize(
-    alert: Alert, triage_decision: str, report: dict, session: "object",
+    alert: Alert, policy_action: str, report: dict, session: "object",
+    *, quiet: bool = False,
 ) -> None:
-    """Generate dashboard, demo summary, and print console summary."""
-    print("[9/9] Generating dashboard and demo summary...")
+    def _print(*args, **kwargs):
+        if not quiet:
+            print(*args, **kwargs)
+
+    _print("[9/9] Generating dashboard...")
     dashboard_path = generate_dashboard()
-    summary_path = _write_demo_summary(alert, triage_decision, report, session)
-    print(f"  Dashboard:    {dashboard_path}")
-    print(f"  Demo summary: {summary_path}")
-    print()
-    _print_summary(alert, triage_decision, report, session)
+    summary_path = _write_demo_summary(alert, policy_action, report, session)
+    _print(f"  Dashboard:    {dashboard_path}")
+    _print(f"  Demo summary: {summary_path}")
+    _print()
+    if not quiet:
+        _print_summary(alert, policy_action, report, session)
 
 
 def _write_demo_summary(
-    alert: Alert, triage_decision: str, report: dict, session: "object",
+    alert: Alert, policy_action: str, report: dict, session: "object",
 ) -> str:
-    """Write a Markdown demo summary to artifacts/demo_summary.md."""
     disposition = report["disposition"]
     status = "COMPLETE" if disposition == "PR_READY" else "ESCALATED"
     ts = report.get("timestamp", datetime.now(timezone.utc).isoformat())
 
     lines = [
-        "# Remediation Demo Summary",
+        "# SAGE Remediation Summary",
         "",
         f"**Generated**: {ts}",
         "",
-        "## Alert Processed",
+        "## Alert",
         "",
         "| Field | Value |",
         "|-------|-------|",
@@ -214,42 +285,15 @@ def _write_demo_summary(
         f"| CWE | {alert.cwe} |",
         f"| Severity | {alert.severity} |",
         f"| File | `{alert.file_path}` |",
-        f"| Lines | {alert.line_range.start}-{alert.line_range.end} |",
         "",
-        "## Decision",
+        "## Governance Decision",
         "",
         "| Field | Value |",
         "|-------|-------|",
-        f"| Triage | {triage_decision} |",
-        f"| Disposition | **{disposition}** |",
+        f"| Policy Action | **{policy_action}** |",
+        f"| Disposition | {disposition} |",
         f"| Confidence | {report.get('confidence', '')} |",
         f"| Decision Trace | {report.get('decision_trace', '')} |",
-        "",
-        "## Remediation",
-        "",
-        f"- **Summary**: {report.get('summary', 'N/A')}",
-        f"- **Root Cause**: {report.get('root_cause', '') or 'N/A'}",
-        f"- **Fix**: {report.get('fix', '') or 'N/A'}",
-        "",
-        "## Artifacts Generated",
-        "",
-        "| Artifact | Path |",
-        "|----------|------|",
-        "| Remediation Report | `artifacts/remediation_report.json` |",
-        "| PR Payload | `artifacts/pr_payload.json` |",
-        "| Notification Payload | `artifacts/notification_payload.json` |",
-        "| HTML Dashboard | `artifacts/dashboard.html` |",
-        "| Demo Summary | `artifacts/demo_summary.md` |",
-        "",
-        "## Integration Status",
-        "",
-        "| Integration | Mode |",
-        "|-------------|------|",
-        f"| Devin | {session.integration_mode} |",
-        "| GitHub PR | stub (JSON artifact) |",
-        "| Notification | stub (JSON artifact) |",
-        "",
-        "## Final Status",
         "",
         f"**{status}** — {disposition}",
         "",
@@ -262,37 +306,37 @@ def _write_demo_summary(
 
 
 def _print_summary(
-    alert: Alert, triage_decision: str, report: dict, session: "object",
+    alert: Alert, policy_action: str, report: dict, session: "object",
 ) -> None:
-    """Print a clean console summary suitable for screen recording."""
     disposition = report["disposition"]
     status = "COMPLETE" if disposition == "PR_READY" else "ESCALATED"
 
     print(SEPARATOR)
-    print("  REMEDIATION SUMMARY")
+    print("  SAGE REMEDIATION SUMMARY")
     print(SEPARATOR)
     print(f"  Alert ID:       {alert.alert_id}")
     print(f"  Rule:           {alert.rule_name}")
     print(f"  CWE:            {alert.cwe}")
-    print(f"  Triage:         {triage_decision}")
+    print(f"  Policy Action:  {policy_action}")
     print(f"  Disposition:    {disposition}")
     print(f"  Confidence:     {report['confidence']}")
     print(f"  Devin Session:  {session.session_id}")
     print(f"  Devin Mode:     {session.integration_mode}")
     print(f"  PR URL:         {session.pr_url or 'N/A'}")
-    print(f"  Notification:   {'sent' if report['notification_sent'] else 'not sent'}")
+    print(f"  Notification:   {'sent' if report.get('notification_sent') else 'not sent'}")
     print(f"  Status:         {status}")
     print(SEPARATOR)
-    print()
-    print("  Artifacts:")
-    print("    artifacts/remediation_report.json")
-    print("    artifacts/pr_payload.json")
-    print("    artifacts/notification_payload.json")
-    print("    artifacts/dashboard.html")
-    print("    artifacts/demo_summary.md")
-    print()
-    print("  Open artifacts/dashboard.html in a browser to view the dashboard.")
-    print(SEPARATOR)
+
+
+def main() -> int:
+    alert_path = sys.argv[1] if len(sys.argv) > 1 else "fixtures/sample_alert.json"
+    repo_root = sys.argv[2] if len(sys.argv) > 2 else "target_repo"
+
+    db_conn = store.init_db()
+    report = process_alert(alert_path, repo_root, db_conn=db_conn)
+    db_conn.close()
+
+    return 0 if report["disposition"] == "PR_READY" else 1
 
 
 if __name__ == "__main__":

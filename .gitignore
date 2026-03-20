@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 artifacts/
+pipeline.db
+.pytest_cache/

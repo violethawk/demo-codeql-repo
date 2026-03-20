@@ -1,12 +1,13 @@
-"""Dashboard Generator: Produce a polished HTML status page from artifacts.
+"""Dashboard Generator: Produce HTML status pages from pipeline data.
 
-Reads the remediation report, PR payload, and notification payload JSON
-files and renders a single-page HTML dashboard so reviewers can see
-the state of the remediation loop without reading raw JSON.
+Two dashboard modes:
+    generate_dashboard()           -- single-alert view from artifact JSON
+    generate_aggregate_dashboard() -- multi-alert view from SQLite database
 
 Usage:
-    from integrations.dashboard import generate_dashboard
-    generate_dashboard()  # reads artifacts/, writes artifacts/dashboard.html
+    from integrations.dashboard import generate_dashboard, generate_aggregate_dashboard
+    generate_dashboard()
+    generate_aggregate_dashboard(db_conn)
 """
 
 import json
@@ -14,10 +15,10 @@ from pathlib import Path
 
 ARTIFACTS_DIR = "artifacts"
 OUTPUT_FILE = "artifacts/dashboard.html"
+AGGREGATE_FILE = "artifacts/dashboard_all.html"
 
 
 def _load_json(path: str) -> dict | None:
-    """Load a JSON file, returning None if it does not exist."""
     p = Path(path)
     if not p.exists():
         return None
@@ -26,10 +27,10 @@ def _load_json(path: str) -> dict | None:
 
 def _status_color(disposition: str) -> str:
     if disposition == "PR_READY":
-        return "#22c55e"  # green
+        return "#22c55e"
     if disposition == "NEEDS_HUMAN_REVIEW":
-        return "#f59e0b"  # amber
-    return "#6b7280"  # gray
+        return "#f59e0b"
+    return "#6b7280"
 
 
 def _confidence_color(confidence: str) -> str:
@@ -40,13 +41,13 @@ def _confidence_color(confidence: str) -> str:
     return "#ef4444"
 
 
-def generate_dashboard(
-    output_path: str = OUTPUT_FILE,
-) -> str:
-    """Generate an HTML dashboard from artifact JSON files.
+# ---------------------------------------------------------------------------
+# Single-alert dashboard (original)
+# ---------------------------------------------------------------------------
 
-    Returns the path to the generated HTML file.
-    """
+
+def generate_dashboard(output_path: str = OUTPUT_FILE) -> str:
+    """Generate an HTML dashboard from artifact JSON files."""
     report = _load_json(f"{ARTIFACTS_DIR}/remediation_report.json")
     pr_payload = _load_json(f"{ARTIFACTS_DIR}/pr_payload.json")
     notification = _load_json(f"{ARTIFACTS_DIR}/notification_payload.json")
@@ -69,7 +70,6 @@ def generate_dashboard(
 
     integration_mode = report.get("integration_mode", "unknown")
 
-    # Validation rows
     validation_rows = ""
     for step in report.get("validation", []):
         result = step.get("result", "")
@@ -83,7 +83,6 @@ def generate_dashboard(
             f"</tr>\n"
         )
 
-    # PR detail section
     pr_section = ""
     if pr_payload:
         pr_section = f"""
@@ -97,14 +96,13 @@ def generate_dashboard(
       </table>
     </div>"""
 
-    # Notification detail section
     notif_section = ""
     if notification:
         notif_section = f"""
     <div class="card">
       <h2>Notification Detail</h2>
       <table>
-        <tr><td><strong>Channel</strong></td><td>#{notification.get('channel', '')}</td></tr>
+        <tr><td><strong>Channel</strong></td><td>{notification.get('channel', '')}</td></tr>
         <tr><td><strong>Owner Team</strong></td><td>{notification.get('owner_team', '')}</td></tr>
         <tr><td><strong>Status</strong></td><td>{notification.get('status', '')}</td></tr>
         <tr><td><strong>Message</strong></td><td>{notification.get('message', '')}</td></tr>
@@ -115,7 +113,7 @@ def generate_dashboard(
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>CodeQL Remediation Dashboard</title>
+  <title>SAGE Dashboard</title>
   <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -155,10 +153,9 @@ def generate_dashboard(
   </style>
 </head>
 <body>
-  <h1>CodeQL Remediation Dashboard</h1>
-  <div class="subtitle">Automated security alert remediation pipeline</div>
+  <h1>SAGE Dashboard</h1>
+  <div class="subtitle">Security Automation &amp; Governance Engine</div>
 
-  <!-- Hero: at-a-glance status -->
   <div class="hero">
     <div class="hero-left">
       <div class="hero-id">{report.get('alert_id', '')}</div>
@@ -171,7 +168,6 @@ def generate_dashboard(
     </div>
   </div>
 
-  <!-- Alert details -->
   <div class="card">
     <h2>Alert</h2>
     <table>
@@ -185,7 +181,6 @@ def generate_dashboard(
     </table>
   </div>
 
-  <!-- Remediation details -->
   <div class="card">
     <h2>Remediation</h2>
     <table>
@@ -198,7 +193,6 @@ def generate_dashboard(
     </table>
   </div>
 
-  <!-- Validation -->
   <div class="card">
     <h2>Validation</h2>
     <table>
@@ -207,7 +201,6 @@ def generate_dashboard(
     </table>
   </div>
 
-  <!-- Delivery -->
   <div class="card">
     <h2>Delivery</h2>
     <table>
@@ -221,7 +214,213 @@ def generate_dashboard(
 {notif_section}
 
   <div class="footer">
-    Generated from <code>artifacts/</code> &mdash; CodeQL Remediation Pipeline (prototype)
+    Generated by SAGE &mdash; Security Automation &amp; Governance Engine
+  </div>
+</body>
+</html>
+"""
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_text(html)
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Aggregate dashboard (multi-alert, from SQLite)
+# ---------------------------------------------------------------------------
+
+
+def generate_aggregate_dashboard(
+    db_conn,
+    output_path: str = AGGREGATE_FILE,
+) -> str:
+    """Generate an aggregate HTML dashboard from the alert tracking database.
+
+    Shows remediation rate, breakdowns by CWE/team/disposition, and a
+    full alert table — the view an auditor or security lead needs.
+    """
+    from pipeline.store import get_metrics, list_alerts
+
+    metrics = get_metrics(db_conn)
+    alerts = list_alerts(db_conn)
+
+    total = metrics["total"]
+    rate = metrics["remediation_rate"]
+    by_disp = metrics["by_disposition"]
+    by_cwe = metrics["by_cwe"]
+    by_team = metrics["by_team"]
+
+    pr_ready = by_disp.get("PR_READY", 0)
+    needs_review = by_disp.get("NEEDS_HUMAN_REVIEW", 0)
+    rate_pct = int(rate * 100)
+
+    # Progress bar color
+    if rate_pct >= 80:
+        bar_color = "#22c55e"
+    elif rate_pct >= 50:
+        bar_color = "#f59e0b"
+    else:
+        bar_color = "#ef4444"
+
+    # CWE breakdown rows
+    cwe_rows = ""
+    for cwe, count in sorted(by_cwe.items()):
+        pct = int(count / total * 100) if total else 0
+        cwe_rows += (
+            f'<tr><td><code>{cwe}</code></td><td>{count}</td>'
+            f'<td><div class="bar" style="width:{pct}%;background:#3b82f6">'
+            f"</div></td></tr>\n"
+        )
+
+    # Team breakdown rows
+    team_rows = ""
+    for team, count in sorted(by_team.items()):
+        pct = int(count / total * 100) if total else 0
+        label = team or "(unassigned)"
+        team_rows += (
+            f"<tr><td>{label}</td><td>{count}</td>"
+            f'<td><div class="bar" style="width:{pct}%;background:#8b5cf6">'
+            f"</div></td></tr>\n"
+        )
+
+    # Alert table rows
+    alert_rows = ""
+    for a in alerts:
+        disp = a["disposition"]
+        disp_color = _status_color(disp)
+        disp_label = "PR_READY" if disp == "PR_READY" else "REVIEW"
+        pr_url = a.get("pr_url", "")
+        pr_cell = f'<a href="{pr_url}">PR</a>' if pr_url else "&mdash;"
+        ts = a["updated_at"][:16].replace("T", " ")
+        alert_rows += (
+            f"<tr>"
+            f"<td><strong>{a['alert_id']}</strong></td>"
+            f"<td><code>{a['cwe']}</code></td>"
+            f"<td>{a.get('rule_name', '')}</td>"
+            f"<td>{a.get('owner_team', '') or '&mdash;'}</td>"
+            f'<td><span class="disp-badge" style="background:{disp_color}">'
+            f"{disp_label}</span></td>"
+            f"<td>{pr_cell}</td>"
+            f"<td>{ts}</td>"
+            f"</tr>\n"
+        )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SAGE - Aggregate Dashboard</title>
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: #f8fafc; color: #1e293b; padding: 2rem; max-width: 1000px; margin: auto; }}
+    h1 {{ font-size: 1.6rem; margin-bottom: 0.25rem; }}
+    .subtitle {{ color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; }}
+
+    /* Metrics cards */
+    .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 1rem; margin-bottom: 1.5rem; }}
+    .metric-card {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+                    padding: 1.25rem; text-align: center; }}
+    .metric-value {{ font-size: 2rem; font-weight: 800; }}
+    .metric-label {{ font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }}
+
+    /* Progress bar */
+    .progress-outer {{ background: #e2e8f0; border-radius: 6px; height: 24px;
+                       margin-top: 0.5rem; overflow: hidden; }}
+    .progress-inner {{ height: 100%; border-radius: 6px; transition: width 0.5s;
+                       display: flex; align-items: center; justify-content: center;
+                       color: #fff; font-weight: 700; font-size: 0.8rem; }}
+
+    /* Cards */
+    .card {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+             padding: 1.25rem; margin-bottom: 1rem; }}
+    .card h2 {{ font-size: 1rem; margin-bottom: 0.75rem; color: #475569;
+                border-bottom: 1px solid #f1f5f9; padding-bottom: 0.4rem; }}
+    .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }}
+
+    /* Tables */
+    table {{ width: 100%; border-collapse: collapse; }}
+    td, th {{ padding: 0.4rem 0.5rem; border-bottom: 1px solid #f1f5f9;
+              vertical-align: middle; text-align: left; font-size: 0.9rem; }}
+    th {{ color: #64748b; font-weight: 600; font-size: 0.8rem; text-transform: uppercase;
+          letter-spacing: 0.03em; }}
+    code {{ background: #f1f5f9; padding: 0.15rem 0.4rem; border-radius: 3px;
+            font-size: 0.85rem; }}
+    a {{ color: #2563eb; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+
+    /* Mini bar chart in tables */
+    .bar {{ height: 14px; border-radius: 3px; min-width: 4px; }}
+
+    /* Disposition badge */
+    .disp-badge {{ display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
+                   color: #fff; font-weight: 700; font-size: 0.75rem; }}
+
+    .footer {{ margin-top: 2rem; font-size: 0.8rem; color: #94a3b8; text-align: center; }}
+  </style>
+</head>
+<body>
+  <h1>SAGE Governance Dashboard</h1>
+  <div class="subtitle">Security Automation &amp; Governance Engine &mdash; aggregate view</div>
+
+  <!-- Top-level metrics -->
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="metric-value">{total}</div>
+      <div class="metric-label">Total Alerts</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value" style="color:#22c55e">{pr_ready}</div>
+      <div class="metric-label">Auto-Remediated</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value" style="color:#f59e0b">{needs_review}</div>
+      <div class="metric-label">Needs Review</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value" style="color:{bar_color}">{rate_pct}%</div>
+      <div class="metric-label">Remediation Rate</div>
+      <div class="progress-outer">
+        <div class="progress-inner" style="width:{rate_pct}%;background:{bar_color}">
+          {rate_pct}%
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Breakdown cards -->
+  <div class="grid-2">
+    <div class="card">
+      <h2>By CWE</h2>
+      <table>
+        <tr><th>CWE</th><th>#</th><th></th></tr>
+        {cwe_rows if cwe_rows else '<tr><td colspan="3">No data</td></tr>'}
+      </table>
+    </div>
+    <div class="card">
+      <h2>By Team</h2>
+      <table>
+        <tr><th>Team</th><th>#</th><th></th></tr>
+        {team_rows if team_rows else '<tr><td colspan="3">No data</td></tr>'}
+      </table>
+    </div>
+  </div>
+
+  <!-- Full alert table -->
+  <div class="card">
+    <h2>All Alerts</h2>
+    <table>
+      <tr>
+        <th>Alert ID</th><th>CWE</th><th>Rule</th><th>Team</th>
+        <th>Status</th><th>PR</th><th>Updated</th>
+      </tr>
+      {alert_rows if alert_rows else '<tr><td colspan="7">No alerts tracked yet</td></tr>'}
+    </table>
+  </div>
+
+  <div class="footer">
+    Generated by SAGE &mdash; Security Automation &amp; Governance Engine
   </div>
 </body>
 </html>
