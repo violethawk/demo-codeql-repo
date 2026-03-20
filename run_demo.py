@@ -22,7 +22,7 @@ from pipeline import store
 
 from integrations.devin_client import (
     create_session, remediate as devin_remediate,
-    build_prompt, _get_mode,
+    build_prompt, _get_mode, DevinSession,
 )
 from integrations.pr_client import build_pr_payload, deliver_pr
 from integrations.notify import build_notification, deliver_notification
@@ -108,10 +108,10 @@ def process_alert(
                 db_conn, alert, report,
                 policy_action=DEFER, sla_hours=triage_result.sla_hours,
             )
-        _finalize(alert, DEFER, report, type("S", (), {
-            "session_id": "N/A", "integration_mode": "stub",
-            "pr_url": "", "disposition": "DEFERRED",
-        })(), quiet=quiet)
+        _finalize(alert, DEFER, report, DevinSession(
+            session_id="N/A", disposition="DEFERRED", confidence="N/A",
+            pr_url="", integration_mode="stub",
+        ), quiet=quiet)
         return report
 
     if action == ESCALATE:
@@ -205,24 +205,24 @@ def _execute_via_devin(
         _print("  No structured plan returned")
     _print()
 
-    # 5. Local validation (if Devin applied a local fix in stub mode)
+    # 5. Validate the fix
     _print("[5/9] Validating fix...")
     target_file = str(Path(repo_root) / alert.file_path)
-    # In stub mode, also run local handler so the demo shows the actual fix
     exec_result = None
     val_result = None
     if mode == "stub":
-        from pipeline.execute import execute
-        exec_result = execute(alert, repo_root)
+        # In stub mode, apply the local handler to demonstrate the actual
+        # code change. In real mode, Devin handles this remotely.
+        from pipeline.execute import execute as _local_execute
+        exec_result = _local_execute(alert, repo_root)
         if exec_result.success:
             val_result = validate(target_file)
             for step in val_result.steps:
                 _print(f"  {step.command} -> {step.result}")
         else:
-            _print(f"  Local handler: {exec_result.error}")
-            _print("  (Devin would handle this in real mode)")
+            _print(f"  (stub mode: local handler unavailable, Devin would handle)")
     else:
-        _print("  Devin validated remotely")
+        _print("  Validated by Devin remotely")
     _print()
 
     # 6. Session result

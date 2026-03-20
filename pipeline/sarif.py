@@ -108,9 +108,14 @@ def parse_sarif(sarif_path: str) -> list[dict]:
     """Parse a SARIF file and return a list of alert dicts.
 
     Each dict matches the schema expected by pipeline.ingest.load_alert().
+    Alert IDs are namespaced by the SARIF filename to prevent collisions
+    when processing multiple scan files.
     """
     raw = json.loads(Path(sarif_path).read_text())
     alerts: list[dict] = []
+
+    # Namespace prefix from filename (e.g., "results.sarif" → "results")
+    prefix = Path(sarif_path).stem.replace(" ", "-")
 
     for run in raw.get("runs", []):
         tool = run.get("tool", {}).get("driver", {})
@@ -159,7 +164,7 @@ def parse_sarif(sarif_path: str) -> list[dict]:
                 guidance = rule.get("shortDescription", {}).get("text", "")
 
             alert = {
-                "alert_id": f"sarif-{i+1:04d}",
+                "alert_id": f"{prefix}-{i+1:04d}",
                 "rule_name": rule.get("shortDescription", {}).get("text", "")
                 or rule.get("name", "")
                 or rule_id,

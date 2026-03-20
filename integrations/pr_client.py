@@ -292,12 +292,3 @@ def deliver_pr(
     if mode == "github" and repo_root:
         return _deliver_pr_github(payload, repo_root)
     return _deliver_pr_stub(payload, output_path)
-
-
-# Backward-compatible alias
-def write_pr_payload(
-    payload: PullRequestPayload,
-    output_path: str = ARTIFACT_PATH,
-) -> None:
-    """Write the PR payload to a JSON artifact (legacy wrapper)."""
-    deliver_pr(payload, output_path)

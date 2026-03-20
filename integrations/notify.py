@@ -296,12 +296,3 @@ def build_escalation_notification(
         message=message,
         integration_mode=_get_notify_mode(),
     )
-
-
-# Backward-compatible alias
-def write_notification(
-    payload: NotificationPayload,
-    output_path: str = ARTIFACT_PATH,
-) -> None:
-    """Write the notification payload to a JSON artifact (legacy wrapper)."""
-    deliver_notification(payload, output_path)
