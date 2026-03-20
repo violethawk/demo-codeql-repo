@@ -1,6 +1,7 @@
 """Output Layer: Produce the structured remediation_report.json."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -15,8 +16,11 @@ def build_report(
     triage_result: TriageResult,
     exec_result: Optional[ExecutionResult],
     val_result: Optional[ValidationResult],
+    pr_url: str = "",
+    notification_sent: bool = False,
 ) -> dict:
     """Build the final remediation report as a dict."""
+    timestamp = datetime.now(timezone.utc).isoformat()
 
     # NEEDS_HUMAN_REVIEW: triage failed
     if not triage_result.eligible:
@@ -34,6 +38,9 @@ def build_report(
             "scope": "",
             "residual_risk": "",
             "decision_trace": "TRIAGE_REJECTED → NEEDS_HUMAN_REVIEW",
+            "pr_url": "",
+            "notification_sent": notification_sent,
+            "timestamp": timestamp,
         }
 
     # NEEDS_HUMAN_REVIEW: execution failed
@@ -52,6 +59,9 @@ def build_report(
             "scope": "",
             "residual_risk": "",
             "decision_trace": "TRUE_POSITIVE → Eligible → Fix Failed → NEEDS_HUMAN_REVIEW",
+            "pr_url": "",
+            "notification_sent": notification_sent,
+            "timestamp": timestamp,
         }
 
     # NEEDS_HUMAN_REVIEW: validation failed
@@ -77,6 +87,9 @@ def build_report(
                 "TRUE_POSITIVE → Eligible → Fix Applied → "
                 "Validation Failed → NEEDS_HUMAN_REVIEW"
             ),
+            "pr_url": "",
+            "notification_sent": notification_sent,
+            "timestamp": timestamp,
         }
 
     # PR_READY: all checks passed
@@ -104,6 +117,9 @@ def build_report(
             "TRUE_POSITIVE → Eligible → Fix Applied → "
             "Validation Passed → PR_READY"
         ),
+        "pr_url": pr_url,
+        "notification_sent": notification_sent,
+        "timestamp": timestamp,
     }
 
 
@@ -117,9 +133,15 @@ def generate_report(
     triage_result: TriageResult,
     exec_result: Optional[ExecutionResult],
     val_result: Optional[ValidationResult],
-    output_path: str = "remediation_report.json",
+    pr_url: str = "",
+    notification_sent: bool = False,
+    output_path: str = "artifacts/remediation_report.json",
 ) -> dict:
     """Build and write the remediation report. Returns the report dict."""
-    report = build_report(alert, triage_result, exec_result, val_result)
+    report = build_report(
+        alert, triage_result, exec_result, val_result,
+        pr_url=pr_url, notification_sent=notification_sent,
+    )
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     write_report(report, output_path)
     return report
