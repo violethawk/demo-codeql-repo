@@ -26,7 +26,7 @@ def _make_alert(**overrides) -> Alert:
 
 
 def test_aggregate_dashboard_renders(tmp_path):
-    """Aggregate dashboard generates valid HTML with metrics."""
+    """Aggregate dashboard generates valid HTML with KPIs."""
     db_path = str(tmp_path / "test.db")
     conn = store.init_db(db_path)
 
@@ -34,11 +34,13 @@ def test_aggregate_dashboard_renders(tmp_path):
         conn,
         _make_alert(alert_id="a1", cwe="CWE-89", owner_team="backend"),
         {"disposition": "PR_READY", "confidence": "HIGH", "pr_url": "http://pr/1"},
+        policy_action="AUTO_REMEDIATE",
     )
     store.record_alert(
         conn,
         _make_alert(alert_id="a2", cwe="CWE-79", owner_team="frontend"),
         {"disposition": "NEEDS_HUMAN_REVIEW", "confidence": "LOW", "pr_url": ""},
+        policy_action="ESCALATE",
     )
 
     out_path = str(tmp_path / "dashboard.html")
@@ -47,11 +49,17 @@ def test_aggregate_dashboard_renders(tmp_path):
     assert result == out_path
     html = open(out_path).read()
 
-    # Metrics present
-    assert "Total Alerts" in html
-    assert "Auto-Remediated" in html
-    assert "Remediation Rate" in html
-    assert "50%" in html  # 1 of 2
+    # SAGE branding
+    assert "SAGE" in html
+    assert "Governance Dashboard" in html
+
+    # KPIs present
+    assert "SLA Compliance" in html
+    assert "Auto-Remediation Rate" in html
+    assert "PR Merge Rate" in html
+    assert "Lifecycle Completion" in html
+    assert "Unowned Findings" in html
+    assert "SLA Breaches" in html
 
     # Alert data present
     assert "a1" in html
@@ -60,6 +68,10 @@ def test_aggregate_dashboard_renders(tmp_path):
     assert "CWE-79" in html
     assert "backend" in html
     assert "frontend" in html
+
+    # Interactive elements
+    assert "filterAlerts" in html
+    assert "filter-btn" in html
 
     conn.close()
 
