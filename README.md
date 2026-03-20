@@ -1,79 +1,84 @@
-# SAGE — Security Automation & Governance Engine
+# SAGE
 
-> SAGE is a security remediation control plane that converts CodeQL
-> findings into fixed, reviewed, and auditable outcomes through
-> policy-driven automation and escalation.
+**Security Automation & Governance Engine**
 
-## Problem
-
-MedSecure does not have a detection problem. MedSecure has an **authority gap**:
-
-- CodeQL detects issues
-- Security files them
-- Engineering ignores them
-- Audit findings pile up
-
-SAGE closes that gap by introducing a programmable control layer that
-decides what happens to each finding, uses Devin to execute remediations
-when appropriate, and enforces follow-through until the issue is resolved
-or escalated.
+CodeQL flags dozens of new issues every week and they just pile up. Security files them, engineering ignores them, auditors flag the backlog. SAGE makes that operationally impossible.
 
 ```
-Detection → Decision → Execution → Review → Enforcement → Evidence
-  CodeQL     Policy     Devin      GitHub    Reminders     Audit Log
-             Engine                + Owners  + Escalation
+python run_interactive.py
+# Open http://localhost:8000 — click a vulnerability, watch it get fixed
 ```
 
 ---
 
-## Quick Start
+## What it does
 
-```bash
-# Single alert (CWE-89 SQL injection — auto-remediated)
-python run_demo.py
+SAGE sits between CodeQL and your engineering team. Findings go in. Fixed, reviewed, auditable outcomes come out.
 
-# XSS fixture (CWE-79 — auto-fixed, security reviewer required)
-python run_demo.py fixtures/sample_alert_xss.json
-
-# Command injection (CWE-78 — auto-fixed, security reviewer required)
-python run_demo.py fixtures/sample_alert_cmdi.json
-
-# Batch: process all fixtures at once
-python run_batch.py fixtures/
-
-# Ingest real CodeQL SARIF output
-python run_sarif.py fixtures/sample_scan.sarif
-
-# View remediation metrics
-python run_metrics.py
-
-# Run enforcement checks (SLA reminders + escalation)
-python run_enforce.py
-
-# Human override: merge, close, reject, defer, escalate, reopen
-python run_override.py <alert_id> merge --reason "reviewed and approved"
-python run_override.py <alert_id> status   # show audit trail
-
-# Open dashboards
-open artifacts/dashboard.html       # single-alert view
-open artifacts/dashboard_all.html   # aggregate governance view
+```
+Detection → Decision → Execution → Review → Enforcement → Evidence
+  CodeQL     Policy     Devin      GitHub    SLA tracking   Audit log
+             Engine     + local    + owners  + escalation
 ```
 
-No external dependencies — Python standard library + `gh` CLI only.
+Two execution paths, split by policy:
+
+| Policy action | Execution | What happens |
+|---|---|---|
+| `AUTO_REMEDIATE` | Local handler | Instant fix, standard code review. For well-understood patterns (SQL injection). |
+| `REMEDIATE_WITH_REVIEW` | Devin API | Devin analyzes the code, produces a remediation plan, implements the fix, opens a PR. Security reviewer required. |
+| `ESCALATE` | None | Finding routed to owning team + security. No auto-fix attempted. |
+| `DEFER` | None | Low-risk. Logged, revisited later. |
+
+The local handler is the fast path for HIGH confidence fixes. Devin is the execution engine for everything that needs analysis. Policy decides which path runs — not the developer, not the tool.
+
+---
+
+## Demo
+
+### Interactive (recommended)
+
+```bash
+python run_interactive.py
+```
+
+Three vulnerable code blocks. Click one. Watch SAGE process it — policy decision, execution, validation, reviewer assignment, notification routing. The code transforms from vulnerable to fixed. The routing panel shows who gets notified, who reviews the PR, and what happens if they don't.
+
+- **CWE-89 (SQL Injection)** → AUTO_REMEDIATE → instant local fix
+- **CWE-79 (XSS)** → REMEDIATE_WITH_REVIEW → Devin analyzes and fixes
+- **CWE-78 (Command Injection)** → REMEDIATE_WITH_REVIEW → Devin analyzes and fixes
+
+### Full lifecycle
+
+```bash
+python run_full_demo.py
+```
+
+Five-phase demo: ingest 3 findings → enforce KPIs → merge one via human override → display all 9 KPIs → generate governance dashboard.
+
+### Individual commands
+
+```bash
+python run_demo.py                              # single alert
+python run_batch.py fixtures/                   # batch processing
+python run_sarif.py fixtures/sample_scan.sarif  # real CodeQL SARIF input
+python run_metrics.py                           # all 9 KPIs
+python run_enforce.py                           # SLA + KPI enforcement
+python run_override.py demo-001 merge           # human override
+python run_override.py demo-001 status          # audit trail
+python run_check.py                             # validate deployment
+```
 
 ---
 
 ## Architecture
 
 ```
-                    SAGE — Security Automation & Governance Engine
-
    ┌──────────┐      ┌──────────────┐      ┌──────────┐      ┌─────────────┐
    │  CodeQL  │ ───▶ │ Policy Engine│ ───▶ │  Devin   │ ───▶ │   GitHub PR │
    │ Findings │      │ Risk + Fix   │      │ Remediate│      │ + Reviewers │
    └──────────┘      │ Confidence   │      └──────────┘      └─────────────┘
                      └──────┬───────┘                               │
-                            │                                       │
                             │                                       ▼
                             │                              ┌─────────────────┐
                             ├──────────────▶               │ Enforcement Loop│
@@ -83,7 +88,6 @@ No external dependencies — Python standard library + `gh` CLI only.
                     │ Escalation   │ ◀───────────────────────────────┘
                     │ Security / EM│
                     └──────┬───────┘
-                           │
                            ▼
                     ┌──────────────┐
                     │  Audit Trail │
@@ -91,162 +95,136 @@ No external dependencies — Python standard library + `gh` CLI only.
                     └──────────────┘
 ```
 
-### Layers
-
-| Layer | Module | Purpose |
-|-------|--------|---------|
-| Detection | `pipeline/ingest.py`, `pipeline/sarif.py` | Ingest CodeQL findings (JSON + SARIF) |
-| Decision | `pipeline/policy.py`, `pipeline/triage.py` | Policy-driven governance action per finding |
-| Execution | `pipeline/execute.py`, `integrations/devin_client.py` | Devin API + local fix handlers |
-| Review | `integrations/pr_client.py`, `integrations/notify.py` | PR creation, reviewer assignment, team notifications |
-| Enforcement | `pipeline/enforcement.py`, `run_enforce.py` | SLA tracking, reminders, auto-escalation |
-| Evidence | `pipeline/store.py`, `pipeline/output.py` | SQLite persistence, immutable audit trail |
-| Visibility | `integrations/dashboard.py`, `run_metrics.py` | HTML dashboards, CLI metrics |
-| Override | `run_override.py` | Human reject/defer/escalate/merge with transition validation |
+| Layer | Module | What it does |
+|---|---|---|
+| Detection | `pipeline/ingest.py`, `pipeline/sarif.py` | Ingest findings from JSON fixtures or CodeQL SARIF |
+| Decision | `pipeline/policy.py`, `pipeline/triage.py` | Classify each finding → one of four governance actions |
+| Execution | `integrations/devin_client.py`, `pipeline/execute.py` | Devin API for REMEDIATE_WITH_REVIEW; local handlers for AUTO_REMEDIATE |
+| Review | `integrations/pr_client.py`, `integrations/notify.py` | Create PRs via `gh` CLI, assign reviewers, route notifications by team |
+| Enforcement | `pipeline/enforcement.py`, `run_enforce.py` | Per-finding SLA tracking + aggregate KPI-driven escalation |
+| Evidence | `pipeline/store.py`, `pipeline/output.py` | SQLite with WAL, lifecycle states, immutable event log |
+| Override | `run_override.py` | Humans can merge, reject, defer, escalate, reopen — with validated transitions |
 
 ---
 
-## Policy Engine
+## Policy
 
-The policy layer separates signal from action. Each CWE maps to one of four governance actions:
+| CWE | Name | Action | Confidence | SLA | Execution |
+|---|---|---|---|---|---|
+| CWE-89 | SQL Injection | `AUTO_REMEDIATE` | HIGH | 24h | Local handler |
+| CWE-79 | Cross-Site Scripting | `REMEDIATE_WITH_REVIEW` | MEDIUM | 24h | Devin |
+| CWE-78 | Command Injection | `REMEDIATE_WITH_REVIEW` | MEDIUM | 24h | Devin |
+| CWE-798 | Hardcoded Credentials | `ESCALATE` | LOW | 12h | None |
+| CWE-287 | Improper Authentication | `ESCALATE` | LOW | 12h | None |
 
-| CWE | Name | Action | Fix Confidence | SLA |
-|-----|------|--------|---------------|-----|
-| CWE-89 | SQL Injection | `AUTO_REMEDIATE` | HIGH | 24h |
-| CWE-79 | Cross-Site Scripting | `REMEDIATE_WITH_REVIEW` | MEDIUM | 24h |
-| CWE-78 | OS Command Injection | `REMEDIATE_WITH_REVIEW` | MEDIUM | 24h |
-| CWE-798 | Hardcoded Credentials | `ESCALATE` | LOW | 12h |
-| CWE-287 | Improper Authentication | `ESCALATE` | LOW | 12h |
+Adding a CWE: add to `REMEDIATION_POLICIES` in `pipeline/policy.py`. If auto-fixable, register a handler in `pipeline/execute.py`. If not, the system routes to ESCALATE automatically.
 
-| Action | Meaning |
-|--------|---------|
-| `AUTO_REMEDIATE` | Fix automatically, standard code review |
-| `REMEDIATE_WITH_REVIEW` | Fix automatically, security reviewer required |
-| `ESCALATE` | No auto-fix; route to owning team + security |
-| `DEFER` | Low-risk; log and revisit later |
+---
 
-### Adding a new CWE
+## Enforcement
 
-1. Add an entry to `REMEDIATION_POLICIES` in `pipeline/policy.py`
-2. If the action includes remediation, register a handler in `pipeline/execute.py`
-3. If the action is `ESCALATE` or `DEFER`, no code needed — the system routes automatically
+Two layers, both with teeth:
+
+### Per-finding SLA
+
+| Condition | Action |
+|---|---|
+| No review after 24h | Remind owner via team Slack channel |
+| No action after 48h | Escalate to `#engineering-leads` |
+| SLA breach | Notify `#security-escalations`, auto-escalate state |
+
+### Aggregate KPIs
+
+KPIs aren't decorative. When they degrade past thresholds, the system acts:
+
+| KPI | Threshold | System action |
+|---|---|---|
+| SLA compliance rate | < 80% | Escalate all at-risk findings |
+| Lifecycle completion | < 80% | Notify security lead |
+| PR merge rate | < 60% | Flag trust degradation to security lead |
+| Unowned findings | > 0 | Auto-assign to default team |
+| SLA breaches | > 0 | Auto-escalate all breached findings |
+
+Thresholds are configured in `sage.config.json`. Run `python run_enforce.py` on a cron.
 
 ---
 
 ## Lifecycle
 
-Every finding progresses through explicit states. No finding can silently persist.
-
 ```
 DETECTED → TRIAGED → REMEDIATED → UNDER_REVIEW → MERGED → CLOSED
-                   ↘ ESCALATED (policy or SLA breach)
+                   ↘ ESCALATED (policy or SLA breach or KPI trigger)
                    ↘ DEFERRED (low-risk, revisit later)
 ```
 
-Every transition is timestamped in an immutable `events` table.
+Every transition is timestamped in an immutable `events` table. `run_override.py` validates transitions — you can't merge from DEFERRED or close from DETECTED.
 
-### Enforcement
+---
 
-Run `python run_enforce.py` on a schedule (e.g., hourly cron):
+## KPIs
 
-| Condition | Action |
-|-----------|--------|
-| No review after 24h | Remind owner via team channel |
-| No action after 48h | Escalate to `#engineering-leads` |
-| SLA breach | Flag in `#security-escalations`, auto-escalate state |
+9 metrics computed from `pipeline.db`, displayed by `run_metrics.py`:
 
-### Human Override
+**Outcome**: SLA compliance rate, mean time to remediation, aging high-risk backlog (within SLA / at risk / breached)
 
-```bash
-python run_override.py <alert_id> merge      # mark as merged
-python run_override.py <alert_id> reject     # reject the fix
-python run_override.py <alert_id> defer      # defer to later
-python run_override.py <alert_id> escalate   # manual escalation
-python run_override.py <alert_id> reopen     # reopen a closed finding
-python run_override.py <alert_id> status     # full audit trail
+**System**: Auto-remediation rate, PR merge rate (trust metric), time to first action
+
+**Governance**: Unowned findings (target: 0), SLA breach count (target: 0), lifecycle completion rate
+
+```
+$ python run_metrics.py
+
+  OUTCOME METRICS
+  SLA Compliance Rate:       33% (1/3 high-risk resolved within SLA)
+  Mean Time to Remediation:  0m
+  Aging High-Risk Backlog:   2 open (2 within SLA, 0 at risk, 0 breached)
+
+  GOVERNANCE
+  Unowned Findings:          PASS
+  SLA Breaches:              PASS
+  Lifecycle Completion:      33% (1/3 reached terminal state)
 ```
 
-All transitions are validated — invalid state changes are rejected.
+---
+
+## Integration
+
+| System | Env var | Behavior |
+|---|---|---|
+| Devin | `DEVIN_MODE=real` + `DEVIN_API_KEY` | Creates sessions, polls completion, extracts PR + plan + insights |
+| GitHub | `PR_MODE=github` | Branch → commit → push → PR via `gh` CLI with reviewers + labels |
+| Slack | `NOTIFY_MODE=slack` + `SLACK_WEBHOOK_URL` | Block Kit messages with status, CWE, team, PR button |
+
+All integrations fall back to stub mode (JSON artifacts on disk) when env vars aren't set. `run_check.py` validates connectivity before deployment.
+
+Reviewer and channel mappings are in `sage.config.json`.
 
 ---
 
-## Integration Modes
+## CI/CD
 
-### Devin
+`.github/workflows/sage.yml` — triggers on CodeQL completion, hourly cron, or manual dispatch:
 
-| Variable | Value | Behavior |
-|----------|-------|----------|
-| `DEVIN_MODE` | `stub` (default) | Simulates session locally |
-| `DEVIN_MODE` | `real` | Calls Devin API, polls for completion |
-| `DEVIN_API_KEY` | your key | Required for real mode |
-
-```bash
-DEVIN_MODE=real DEVIN_API_KEY=your-key python run_demo.py
-```
-
-### GitHub PRs
-
-| Variable | Value | Behavior |
-|----------|-------|----------|
-| `PR_MODE` | `stub` (default) | Writes JSON artifact |
-| `PR_MODE` | `github` | Creates branch, commits, pushes, opens PR via `gh` CLI |
-
-PRs include reviewer assignment and labels (`security-review-required`, `cwe:CWE-89`, etc.).
-
-### Notifications
-
-Team-based routing:
-
-| Team | Channel |
-|------|---------|
-| backend | `#backend-security` |
-| frontend | `#frontend-security` |
-| platform | `#platform-security` |
-| (unknown) | `#security-alerts` |
-
-Escalations route to `#engineering-leads` and `#security-escalations`.
-
----
-
-## Success Metrics
-
-See [docs/KPIS.md](docs/KPIS.md) for the full framework.
-
-| Category | Metrics |
-|----------|---------|
-| Outcome | SLA compliance rate, severity-weighted MTTR, aging backlog |
-| System | Auto-remediation rate, PR merge rate, time to first action |
-| Governance | Unowned findings (target: 0), SLA breaches, lifecycle completion |
-
-All metrics are computable from the existing `pipeline.db` schema.
-
----
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Full requirements spec — 12 FRs, 7 NFRs, 5 governance requirements |
-| [docs/KPIS.md](docs/KPIS.md) | Success metrics framework — outcome, system, and governance KPIs |
+- **remediate**: Fetch CodeQL alerts via `gh api`, run pipeline, enforce, display metrics
+- **enforce**: Hourly SLA + KPI enforcement checks
+- **metrics**: On-demand KPI display
+- **check**: Validate configuration and connectivity
 
 ---
 
 ## Tests
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ -v    # 67 tests
 ```
 
-61 tests covering: ingest, triage, policy, execute (3 CWEs), validate, store, enforcement, notifications, escalation routing, dashboard, and human overrides.
+Covers: ingest, triage, policy, execute (3 CWEs × multiple patterns), validate, store, enforcement (SLA + KPI-driven), notifications, escalation routing, dashboard, and human overrides.
 
 ---
 
-## Design Principles
+## Documentation
 
-**Separation of authority and execution.** Detection systems should not decide. Execution agents should not self-authorize. Policy governs both.
-
-**Policy-bounded autonomy.** The system never auto-remediates outside explicitly approved categories. Uncontrolled autonomy destroys trust.
-
-**Safe failure.** If remediation cannot be completed confidently, the system fails into review or escalation — never silent dismissal.
-
-**Evidence as a first-class output.** The audit layer turns security work from tribal process into inspectable evidence.
+| Document | What's in it |
+|---|---|
+| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | 12 functional requirements, 7 non-functional, 5 governance, acceptance criteria |
+| [docs/KPIS.md](docs/KPIS.md) | 9 KPIs mapped to the system components that drive them |
