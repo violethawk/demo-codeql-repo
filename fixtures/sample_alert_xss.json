@@ -1,0 +1,22 @@
+{
+  "alert_id": "demo-002",
+  "rule_name": "Reflected cross-site scripting",
+  "severity": "high",
+  "cwe": "CWE-79",
+  "language": "python",
+  "repo_name": "demo-codeql-repo",
+  "default_branch": "main",
+  "file_path": "app.py",
+  "line_range": {
+    "start": 25,
+    "end": 28
+  },
+  "vulnerable_code_snippet": [
+    "user_input = request.args.get('query', '')",
+    "return f'<h1>Results for {user_input}</h1>'"
+  ],
+  "alert_description": "User-controlled input is included in HTML output without escaping, enabling reflected cross-site scripting.",
+  "security_guidance": "Escape user input before embedding it in HTML output. Use a templating engine with auto-escaping or call markupsafe.escape().",
+  "owner_team": "frontend",
+  "auto_fix_confidence": 0.7
+}
