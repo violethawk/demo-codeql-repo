@@ -124,6 +124,8 @@ $ python run_metrics.py
 
 All fall back to stub mode when env vars aren't set. `python run_check.py` validates connectivity.
 
+Real Devin sessions create branches in this repo — see `devin/*` branches for proof of live API integration.
+
 <details>
 <summary><strong>Architecture details</strong></summary>
 
@@ -190,7 +192,7 @@ Every transition is timestamped. Invalid transitions are rejected. `run_override
 ## Tests
 
 ```bash
-python -m pytest tests/ -v    # 67 tests
+python -m pytest tests/ -v    # 72 tests
 ```
 
 Covers: ingest, triage, policy, execute (3 CWEs × 4 SQL patterns), validate, store, enforcement (SLA + KPI-driven), notifications, escalation routing, dashboard, and human overrides.

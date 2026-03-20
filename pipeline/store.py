@@ -320,16 +320,18 @@ def get_kpis(conn: sqlite3.Connection) -> dict:
             pass
 
     # --- 3.1 Auto-Remediation Rate ---
+    # Based on policy action (what the system decided), not post-enforcement state
     auto_rem = conn.execute(
         """SELECT COUNT(*) FROM alerts
-           WHERE policy_action IN ('AUTO_REMEDIATE', 'REMEDIATE_WITH_REVIEW')
-           AND disposition = 'PR_READY'""",
+           WHERE policy_action IN ('AUTO_REMEDIATE', 'REMEDIATE_WITH_REVIEW')""",
     ).fetchone()[0]
     auto_rate = round(auto_rem / total, 2) if total else 0.0
 
     # --- 3.2 PR Merge Rate ---
+    # Total PRs = alerts that ever reached UNDER_REVIEW (had a PR created)
     total_prs = conn.execute(
-        "SELECT COUNT(*) FROM alerts WHERE disposition = 'PR_READY'",
+        """SELECT COUNT(DISTINCT alert_id) FROM events
+           WHERE new_state = 'UNDER_REVIEW'""",
     ).fetchone()[0]
     merged = conn.execute(
         "SELECT COUNT(*) FROM alerts WHERE lifecycle_state = 'MERGED'",
