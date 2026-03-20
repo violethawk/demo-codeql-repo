@@ -117,19 +117,20 @@ def phase_1_live_flow() -> None:
 
 
 def phase_2_enforcement() -> None:
-    """SLA enforcement check."""
-    banner("PHASE 2: ENFORCEMENT — Does anything happen if you close the browser?")
+    """SLA enforcement + KPI-driven enforcement."""
+    banner("PHASE 2: ENFORCEMENT — KPIs drive system actions")
 
-    print("  Yes. The enforcement layer runs independently.")
-    print("  It checks every finding against its SLA and delivers")
-    print("  reminders, escalations, or breach notifications.")
+    print("  The enforcement layer doesn't just report metrics.")
+    print("  When KPIs degrade past thresholds, the system acts:")
     print()
-    print("  In production this runs on a cron. Right now, all findings")
-    print("  are fresh — so enforcement reports no action needed.")
-    print("  That itself is a signal: the system is current.")
+    print("    SLA compliance < 80%     → escalate at-risk findings")
+    print("    Lifecycle completion < 80% → notify security lead")
+    print("    PR merge rate < 60%      → flag trust issue")
+    print("    Unowned findings > 0     → auto-assign to default team")
+    print("    SLA breaches > 0         → auto-escalate breached findings")
     pause()
 
-    section("Running enforcement check")
+    section("Running enforcement (dry-run)")
     run("python run_enforce.py --dry-run")
     pause()
 
