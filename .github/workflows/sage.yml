@@ -1,17 +1,16 @@
 name: SAGE Remediation
 
-# Trigger: after CodeQL analysis completes, or on schedule, or manually
 on:
   # Run after CodeQL workflow completes
   workflow_run:
     workflows: ["CodeQL"]
     types: [completed]
 
-  # Run on a schedule (e.g., hourly enforcement checks)
+  # Hourly enforcement checks
   schedule:
     - cron: "0 * * * *"
 
-  # Manual trigger for on-demand runs
+  # Manual trigger
   workflow_dispatch:
     inputs:
       mode:
@@ -23,15 +22,51 @@ on:
           - remediate
           - enforce
           - metrics
+          - check
 
 jobs:
   # -------------------------------------------------------------------
-  # Remediate: Process new CodeQL findings through the SAGE pipeline
+  # Test: always run tests first
+  # -------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+  # -------------------------------------------------------------------
+  # Check: validate configuration and connectivity
+  # -------------------------------------------------------------------
+  check:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'check'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run health check
+        run: python run_check.py
+        env:
+          DEVIN_MODE: ${{ secrets.DEVIN_API_KEY && 'real' || 'stub' }}
+          DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+          PR_MODE: ${{ secrets.GITHUB_TOKEN && 'github' || 'stub' }}
+          NOTIFY_MODE: ${{ secrets.SLACK_WEBHOOK_URL && 'slack' || 'stub' }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # -------------------------------------------------------------------
+  # Remediate: process new CodeQL findings
   # -------------------------------------------------------------------
   remediate:
     if: >
       github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'remediate' ||
       github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -45,63 +80,100 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Download CodeQL SARIF
-        if: github.event_name == 'workflow_run'
+      - name: Fetch CodeQL alerts as SARIF
+        id: fetch
         run: |
-          # Download the SARIF artifact from the CodeQL workflow run
-          gh run download ${{ github.event.workflow_run.id }} \
-            --name sarif-results \
-            --dir sarif-output/ || true
+          mkdir -p sarif-output
 
-          # Fallback: export via code-scanning API
-          if [ ! -f sarif-output/*.sarif ]; then
-            gh api repos/${{ github.repository }}/code-scanning/analyses \
-              --jq '.[0].sarif_id' | xargs -I{} \
-              gh api repos/${{ github.repository }}/code-scanning/sarifs/{} \
-              > sarif-output/results.sarif || true
+          # Try to export open alerts via code-scanning API
+          gh api "repos/${{ github.repository }}/code-scanning/alerts?state=open" \
+            --jq 'length' > /tmp/alert_count 2>/dev/null || echo "0" > /tmp/alert_count
+
+          ALERT_COUNT=$(cat /tmp/alert_count)
+          echo "alert_count=$ALERT_COUNT" >> "$GITHUB_OUTPUT"
+
+          if [ "$ALERT_COUNT" -gt "0" ]; then
+            # Export each alert as a fixture JSON
+            gh api "repos/${{ github.repository }}/code-scanning/alerts?state=open" \
+              --jq '.[] | {
+                alert_id: ("gh-" + (.number | tostring)),
+                rule_name: .rule.description,
+                severity: .rule.security_severity_level,
+                cwe: (if .rule.tags then (.rule.tags[] | select(startswith("external/cwe/"))) else "" end),
+                language: "",
+                repo_name: "${{ github.event.repository.name }}",
+                default_branch: "${{ github.event.repository.default_branch }}",
+                file_path: .most_recent_instance.location.path,
+                line_range: {start: .most_recent_instance.location.start_line, end: .most_recent_instance.location.end_line},
+                vulnerable_code_snippet: [],
+                alert_description: .most_recent_instance.message.text,
+                security_guidance: .rule.help,
+                owner_team: ""
+              }' > sarif-output/alerts.jsonl 2>/dev/null || true
+
+            # Split into individual fixture files
+            if [ -f sarif-output/alerts.jsonl ]; then
+              i=1
+              while IFS= read -r line; do
+                echo "$line" > "sarif-output/alert-$i.json"
+                i=$((i + 1))
+              done < sarif-output/alerts.jsonl
+              rm sarif-output/alerts.jsonl
+            fi
+
+            echo "Found $ALERT_COUNT CodeQL alert(s)"
+          else
+            echo "No open CodeQL alerts found"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run SAGE pipeline
         run: |
-          if [ -d sarif-output ] && ls sarif-output/*.sarif 1>/dev/null 2>&1; then
-            echo "Processing SARIF output..."
-            python run_sarif.py sarif-output/*.sarif --repo .
+          ALERT_COUNT="${{ steps.fetch.outputs.alert_count }}"
+          if [ -d sarif-output ] && ls sarif-output/*.json 1>/dev/null 2>&1; then
+            echo "Processing $ALERT_COUNT CodeQL alert(s)..."
+            python run_batch.py sarif-output/
           else
-            echo "No SARIF found. Processing fixture alerts..."
+            echo "No alerts to process. Running fixture demo..."
             python run_batch.py fixtures/
           fi
         env:
           DEVIN_MODE: ${{ secrets.DEVIN_API_KEY && 'real' || 'stub' }}
           DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
-          PR_MODE: github
+          PR_MODE: ${{ secrets.GITHUB_TOKEN && 'github' || 'stub' }}
           NOTIFY_MODE: ${{ secrets.SLACK_WEBHOOK_URL && 'slack' || 'stub' }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-      - name: Run enforcement check
+      - name: Run enforcement
         run: python run_enforce.py
+        env:
+          NOTIFY_MODE: ${{ secrets.SLACK_WEBHOOK_URL && 'slack' || 'stub' }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Display metrics
+        run: python run_metrics.py
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sage-artifacts
+          name: sage-artifacts-${{ github.run_number }}
           path: |
             artifacts/
             pipeline.db
 
   # -------------------------------------------------------------------
-  # Enforce: SLA checks and escalation (runs on schedule)
+  # Enforce: hourly SLA + KPI enforcement
   # -------------------------------------------------------------------
   enforce:
     if: >
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'enforce'
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -109,7 +181,8 @@ jobs:
       - name: Download pipeline DB
         uses: actions/download-artifact@v4
         with:
-          name: sage-artifacts
+          pattern: sage-artifacts-*
+          merge-multiple: true
           path: .
         continue-on-error: true
 
@@ -119,25 +192,27 @@ jobs:
           NOTIFY_MODE: ${{ secrets.SLACK_WEBHOOK_URL && 'slack' || 'stub' }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-      - name: Upload updated DB
+      - name: Display metrics
+        run: python run_metrics.py
+
+      - name: Upload updated artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sage-artifacts
+          name: sage-artifacts-${{ github.run_number }}
           path: |
             artifacts/
             pipeline.db
-          overwrite: true
 
   # -------------------------------------------------------------------
-  # Metrics: Generate and display remediation metrics
+  # Metrics: on-demand KPI display
   # -------------------------------------------------------------------
   metrics:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'metrics'
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -145,7 +220,8 @@ jobs:
       - name: Download pipeline DB
         uses: actions/download-artifact@v4
         with:
-          name: sage-artifacts
+          pattern: sage-artifacts-*
+          merge-multiple: true
           path: .
         continue-on-error: true
 

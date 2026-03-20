@@ -45,9 +45,15 @@ CREATE TABLE IF NOT EXISTS events (
 
 
 def init_db(db_path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    """Open (or create) the SAGE alert tracking database."""
-    conn = sqlite3.connect(db_path)
+    """Open (or create) the SAGE alert tracking database.
+
+    Uses WAL journal mode for safe concurrent reads (e.g., multiple
+    CI runners or enforcement cron alongside the pipeline).
+    """
+    conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.execute(_CREATE_ALERTS)
     conn.execute(_CREATE_EVENTS)
     conn.commit()

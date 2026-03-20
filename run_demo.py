@@ -211,8 +211,7 @@ def _execute_via_devin(
     exec_result = None
     val_result = None
     if mode == "stub":
-        # In stub mode, apply the local handler to demonstrate the actual
-        # code change. In real mode, Devin handles this remotely.
+        # Stub mode: run local handler to demonstrate the actual code change
         from pipeline.execute import execute as _local_execute
         exec_result = _local_execute(alert, repo_root)
         if exec_result.success:
@@ -222,7 +221,19 @@ def _execute_via_devin(
         else:
             _print(f"  (stub mode: local handler unavailable, Devin would handle)")
     else:
-        _print("  Validated by Devin remotely")
+        # Real mode: Devin handled the fix remotely. Build an ExecutionResult
+        # from Devin's plan so the audit record has consistent fields.
+        _print("  Devin validated remotely")
+        if session.plan:
+            exec_result = ExecutionResult(
+                success=session.disposition == "PR_READY",
+                files_changed=session.plan.affected_files,
+                summary=session.plan.fix_strategy,
+                root_cause=session.plan.root_cause,
+                fix_description=session.plan.fix_strategy,
+                why_fix_works=f"Devin session {session.session_id}: {session.plan.confidence} confidence",
+                residual_risk="See Devin session insights for details.",
+            )
     _print()
 
     # 6. Session result
@@ -255,8 +266,10 @@ def _execute_via_devin(
         _print(f"  PR payload:     {pr_result.artifact_path} ({pr_result.method})")
         if pr_result.pr_url:
             session.pr_url = pr_result.pr_url
+    elif session.pr_url:
+        _print(f"  PR: {session.pr_url} (created by Devin)")
     else:
-        _print(f"  PR: {session.pr_url or 'created by Devin'}")
+        _print("  PR: Devin session did not produce a PR — escalating")
 
     _print("  Security reviewer: REQUIRED")
 
