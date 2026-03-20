@@ -1,5 +1,8 @@
+import ipaddress
 import os
+import re
 import sqlite3
+import subprocess
 
 from flask import Flask, request, jsonify
 
@@ -29,11 +32,29 @@ def search_page():
     return f"<h1>Results for {user_input}</h1>"
 
 
+def _is_valid_host(host: str) -> bool:
+    """Validate that host is a legitimate IP address or hostname."""
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    # Allow valid hostnames: alphanumeric, hyphens, dots
+    return bool(re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$', host))
+
+
 @app.route("/ping")
 def ping_host():
     host = request.args.get("host", "127.0.0.1")
-    os.system("ping -c 1 " + host)
-    return jsonify({"status": "ok"})
+    if not _is_valid_host(host):
+        return jsonify({"error": "Invalid host"}), 400
+    result = subprocess.run(
+        ["ping", "-c", "1", host],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return jsonify({"status": "ok", "output": result.stdout})
 
 
 @app.route("/health")
