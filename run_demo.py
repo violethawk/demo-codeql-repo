@@ -2,6 +2,10 @@
 """SAGE — Security Automation & Governance Engine
 
     Detection → Decision → Execution → Review → Enforcement → Evidence
+
+Two execution paths:
+    AUTO_REMEDIATE         → Local fix handlers (fast, HIGH confidence)
+    REMEDIATE_WITH_REVIEW  → Devin as primary execution engine
 """
 
 import sys
@@ -11,12 +15,15 @@ from pathlib import Path
 from pipeline.ingest import Alert, load_alert
 from pipeline.triage import triage
 from pipeline.policy import AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE, DEFER
-from pipeline.execute import execute
+from pipeline.execute import execute, ExecutionResult
 from pipeline.validate import validate
 from pipeline.output import generate_report
 from pipeline import store
 
-from integrations.devin_client import create_session, build_prompt, _get_mode
+from integrations.devin_client import (
+    create_session, remediate as devin_remediate,
+    build_prompt, _get_mode,
+)
 from integrations.pr_client import build_pr_payload, deliver_pr
 from integrations.notify import build_notification, deliver_notification
 from integrations.dashboard import generate_dashboard
@@ -130,14 +137,200 @@ def process_alert(
         _finalize(alert, ESCALATE, report, session, quiet=quiet)
         return report
 
-    # AUTO_REMEDIATE or REMEDIATE_WITH_REVIEW
     review_required = action == REMEDIATE_WITH_REVIEW
     _print(f"  Action: {action}")
     if review_required:
         _print("  Note: security reviewer required on PR")
     _print()
 
-    # 3. Execution — Devin generates the remediation
+    # -----------------------------------------------------------------------
+    # REMEDIATE_WITH_REVIEW → Devin is the primary execution engine
+    # -----------------------------------------------------------------------
+    if review_required:
+        return _execute_via_devin(
+            alert, triage_result, action, repo_root,
+            db_conn=db_conn, quiet=quiet,
+        )
+
+    # -----------------------------------------------------------------------
+    # AUTO_REMEDIATE → Local fix handlers (fast path, HIGH confidence)
+    # -----------------------------------------------------------------------
+    return _execute_local(
+        alert, triage_result, action, repo_root,
+        db_conn=db_conn, quiet=quiet,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Execution path: Devin (REMEDIATE_WITH_REVIEW)
+# ---------------------------------------------------------------------------
+
+
+def _execute_via_devin(
+    alert: Alert,
+    triage_result,
+    action: str,
+    repo_root: str,
+    *,
+    db_conn=None,
+    quiet: bool = False,
+) -> dict:
+    """Devin is the primary execution engine for REMEDIATE_WITH_REVIEW.
+
+    Flow: plan → patch → PR → insights → audit
+    """
+    def _print(*args, **kwargs):
+        if not quiet:
+            print(*args, **kwargs)
+
+    mode = _get_mode()
+
+    # 3. Devin remediation session
+    _print("[3/9] Devin remediation session (primary execution)...")
+    _print(f"  Mode: {mode}")
+    _print(f"  Devin analyzes finding, plans fix, implements patch, opens PR")
+    _print()
+
+    session = devin_remediate(alert)
+
+    # 4. Report remediation plan
+    _print("[4/9] Remediation plan...")
+    if session.plan:
+        _print(f"  Root cause:     {session.plan.root_cause[:80]}...")
+        _print(f"  Fix strategy:   {session.plan.fix_strategy[:80]}...")
+        _print(f"  Affected files: {', '.join(session.plan.affected_files) or 'N/A'}")
+        _print(f"  Test plan:      {session.plan.test_plan[:80]}...")
+        _print(f"  Confidence:     {session.plan.confidence}")
+    else:
+        _print("  No structured plan returned")
+    _print()
+
+    # 5. Local validation (if Devin applied a local fix in stub mode)
+    _print("[5/9] Validating fix...")
+    target_file = str(Path(repo_root) / alert.file_path)
+    # In stub mode, also run local handler so the demo shows the actual fix
+    exec_result = None
+    val_result = None
+    if mode == "stub":
+        from pipeline.execute import execute
+        exec_result = execute(alert, repo_root)
+        if exec_result.success:
+            val_result = validate(target_file)
+            for step in val_result.steps:
+                _print(f"  {step.command} -> {step.result}")
+        else:
+            _print(f"  Local handler: {exec_result.error}")
+            _print("  (Devin would handle this in real mode)")
+    else:
+        _print("  Devin validated remotely")
+    _print()
+
+    # 6. Session result
+    _print("[6/9] Devin session complete...")
+    _print(f"  Session ID:  {session.session_id}")
+    _print(f"  Disposition: {session.disposition}")
+    _print(f"  PR URL:      {session.pr_url or 'N/A'}")
+    _print()
+
+    # 7. Session insights
+    _print("[7/9] Session insights...")
+    if session.insights and session.insights.summary:
+        _print(f"  Summary:        {session.insights.summary[:80]}...")
+        _print(f"  Changes:        {session.insights.changes_made[:80]}...")
+        _print(f"  Tests:          {session.insights.tests_added[:80]}...")
+        _print(f"  Reviewer notes: {session.insights.reviewer_notes[:80]}...")
+    else:
+        _print("  No insights available")
+    _print()
+
+    # 8. Routing + notification
+    _print("[8/9] Routing to reviewers...")
+    if exec_result and exec_result.success:
+        pr_payload = build_pr_payload(
+            alert, exec_result, session.pr_url,
+            integration_mode=session.integration_mode,
+            review_required=True,
+        )
+        pr_result = deliver_pr(pr_payload, repo_root=repo_root)
+        _print(f"  PR payload:     {pr_result.artifact_path} ({pr_result.method})")
+        if pr_result.pr_url:
+            session.pr_url = pr_result.pr_url
+    else:
+        _print(f"  PR: {session.pr_url or 'created by Devin'}")
+
+    _print("  Security reviewer: REQUIRED")
+
+    notification = build_notification(
+        alert, session.disposition, session.pr_url,
+        integration_mode=session.integration_mode,
+    )
+    notif_result = deliver_notification(notification)
+    _print(f"  Notification:   {notif_result.artifact_path} ({notif_result.method})")
+    _print()
+
+    # 9. Audit evidence
+    _print("[9/9] Recording audit evidence...")
+    report = generate_report(
+        alert, triage_result, exec_result, val_result,
+        pr_url=session.pr_url, notification_sent=True,
+        integration_mode=session.integration_mode,
+    )
+    report["policy_action"] = action
+    report["review_required"] = True
+    report["devin_session_id"] = session.session_id
+
+    # Attach plan and insights to audit record
+    if session.plan:
+        report["remediation_plan"] = {
+            "root_cause": session.plan.root_cause,
+            "fix_strategy": session.plan.fix_strategy,
+            "affected_files": session.plan.affected_files,
+            "test_plan": session.plan.test_plan,
+            "confidence": session.plan.confidence,
+        }
+    if session.insights and session.insights.summary:
+        report["devin_insights"] = {
+            "summary": session.insights.summary,
+            "changes_made": session.insights.changes_made,
+            "tests_added": session.insights.tests_added,
+            "reviewer_notes": session.insights.reviewer_notes,
+        }
+
+    _print("  Written: artifacts/remediation_report.json")
+    _print()
+
+    if db_conn:
+        store.record_alert(
+            db_conn, alert, report,
+            policy_action=action, sla_hours=triage_result.sla_hours,
+        )
+
+    _finalize(alert, action, report, session, quiet=quiet)
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Execution path: Local handlers (AUTO_REMEDIATE)
+# ---------------------------------------------------------------------------
+
+
+def _execute_local(
+    alert: Alert,
+    triage_result,
+    action: str,
+    repo_root: str,
+    *,
+    db_conn=None,
+    quiet: bool = False,
+) -> dict:
+    """Local fix handlers for AUTO_REMEDIATE (fast path, HIGH confidence)."""
+    def _print(*args, **kwargs):
+        if not quiet:
+            print(*args, **kwargs)
+
+    mode = _get_mode()
+
+    # 3. Execution
     _print("[3/9] Creating Devin remediation session...")
     prompt = build_prompt(alert)
     _print(f"  Mode:        {mode}")
@@ -145,8 +338,8 @@ def process_alert(
     _print(f"  Target:      {prompt['alert']['file_path']}")
     _print()
 
-    # 4. Apply fix
-    _print("[4/9] Applying fix...")
+    # 4. Apply fix via local handler
+    _print("[4/9] Applying fix (local handler — HIGH confidence)...")
     exec_result = execute(alert, repo_root)
     if not exec_result.success:
         _print(f"  Error: {exec_result.error}")
@@ -196,20 +389,17 @@ def process_alert(
     _print(f"  PR URL:      {session.pr_url}")
     _print()
 
-    # 7. Review & Routing — PR + notification to right humans
+    # 7. Review & Routing
     _print("[7/9] Routing to reviewers...")
     pr_payload = build_pr_payload(
         alert, exec_result, session.pr_url,
         integration_mode=session.integration_mode,
-        review_required=review_required,
+        review_required=False,
     )
     pr_result = deliver_pr(pr_payload, repo_root=repo_root)
     _print(f"  PR payload:     {pr_result.artifact_path} ({pr_result.method})")
     if pr_result.pr_url:
         session.pr_url = pr_result.pr_url
-
-    if review_required:
-        _print("  Security reviewer: REQUIRED")
 
     notification = build_notification(
         alert, session.disposition, session.pr_url,
@@ -219,7 +409,7 @@ def process_alert(
     _print(f"  Notification:   {notif_result.artifact_path} ({notif_result.method})")
     _print()
 
-    # 8. Audit — evidence for compliance
+    # 8. Audit report
     _print("[8/9] Recording audit evidence...")
     report = generate_report(
         alert, triage_result, exec_result, val_result,
@@ -227,7 +417,7 @@ def process_alert(
         integration_mode=session.integration_mode,
     )
     report["policy_action"] = action
-    report["review_required"] = review_required
+    report["review_required"] = False
     _print("  Written: artifacts/remediation_report.json")
     _print()
 
@@ -326,6 +516,10 @@ def _print_summary(
     print(f"  PR URL:         {session.pr_url or 'N/A'}")
     print(f"  Notification:   {'sent' if report.get('notification_sent') else 'not sent'}")
     print(f"  Status:         {status}")
+    if hasattr(session, 'plan') and session.plan:
+        print(f"  Remediation plan: attached")
+    if hasattr(session, 'insights') and session.insights and session.insights.summary:
+        print(f"  Session insights: attached")
     print(SEPARATOR)
 
 

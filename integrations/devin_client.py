@@ -8,6 +8,17 @@ Supports two modes controlled by the DEVIN_MODE environment variable:
 
 Devin is not a generic coding assistant here. It is the constrained
 execution engine inside a policy-governed workflow.
+
+Two execution paths:
+
+    AUTO_REMEDIATE         → Local fix handlers (fast path, HIGH confidence)
+    REMEDIATE_WITH_REVIEW  → Devin session (full autonomous engineer)
+
+For REMEDIATE_WITH_REVIEW, Devin:
+    1. Analyzes the finding and produces a remediation plan
+    2. Implements the patch + tests
+    3. Opens a PR
+    4. Returns structured output for audit
 """
 
 import json
@@ -16,7 +27,8 @@ import time
 import uuid
 import urllib.request
 import urllib.error
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 from pipeline.ingest import Alert
 
@@ -48,6 +60,30 @@ def _get_api_key() -> str:
     return key
 
 
+# ---------------------------------------------------------------------------
+# Data contracts
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RemediationPlan:
+    """Structured remediation plan produced by Devin before code changes."""
+    root_cause: str = ""
+    fix_strategy: str = ""
+    affected_files: list[str] = field(default_factory=list)
+    test_plan: str = ""
+    confidence: str = ""
+
+
+@dataclass
+class SessionInsights:
+    """Post-session analysis from Devin."""
+    summary: str = ""
+    changes_made: str = ""
+    tests_added: str = ""
+    reviewer_notes: str = ""
+
+
 @dataclass
 class DevinSession:
     session_id: str
@@ -55,11 +91,47 @@ class DevinSession:
     confidence: str
     pr_url: str
     integration_mode: str  # "stub" or "real"
+    plan: Optional[RemediationPlan] = None
+    insights: Optional[SessionInsights] = None
 
 
 # ---------------------------------------------------------------------------
-# Prompt builder (shared by both modes)
+# Prompt builders
 # ---------------------------------------------------------------------------
+
+# JSON Schema for structured output — Devin returns this alongside the fix.
+_REMEDIATION_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "root_cause": {
+            "type": "string",
+            "description": "Root cause analysis of the vulnerability",
+        },
+        "fix_strategy": {
+            "type": "string",
+            "description": "Description of the remediation approach",
+        },
+        "affected_files": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of files modified",
+        },
+        "test_plan": {
+            "type": "string",
+            "description": "Tests added or updated to verify the fix",
+        },
+        "confidence": {
+            "type": "string",
+            "enum": ["HIGH", "MEDIUM", "LOW"],
+            "description": "Confidence that the fix fully resolves the issue",
+        },
+        "pr_url": {
+            "type": "string",
+            "description": "URL of the created pull request",
+        },
+    },
+    "required": ["root_cause", "fix_strategy", "confidence"],
+}
 
 
 def build_prompt(alert: Alert) -> dict:
@@ -86,6 +158,27 @@ def build_prompt(alert: Alert) -> dict:
             "Otherwise, escalate for human review."
         ),
     }
+
+
+def _build_remediation_prompt(alert: Alert) -> str:
+    """Build a detailed remediation prompt for REMEDIATE_WITH_REVIEW sessions."""
+    snippet = "\n".join(f"  {line}" for line in alert.vulnerable_code_snippet)
+    return (
+        f"SAGE Remediation Task: {alert.cwe} — {alert.rule_name}\n\n"
+        f"File: {alert.file_path} "
+        f"(lines {alert.line_range.start}-{alert.line_range.end})\n\n"
+        f"Description: {alert.alert_description}\n\n"
+        f"Security guidance: {alert.security_guidance}\n\n"
+        f"Vulnerable code:\n{snippet}\n\n"
+        f"Instructions:\n"
+        f"1. Analyze the root cause of this vulnerability\n"
+        f"2. Develop a remediation strategy\n"
+        f"3. Implement the minimal safe fix\n"
+        f"4. Add or update tests to verify the fix\n"
+        f"5. Open a pull request with a clear explanation\n\n"
+        f"Return your analysis as structured output including root_cause, "
+        f"fix_strategy, affected_files, test_plan, and confidence level."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +218,7 @@ def _api_request(method: str, path: str, body: dict | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Stub implementation
+# Stub implementations
 # ---------------------------------------------------------------------------
 
 
@@ -148,13 +241,61 @@ def _create_session_stub(
     )
 
 
+def _remediate_stub(alert: Alert) -> DevinSession:
+    """Simulate a full Devin remediation session in stub mode."""
+    session_id = f"devin-{uuid.uuid4().hex[:12]}"
+
+    plan = RemediationPlan(
+        root_cause=(
+            f"User-controlled input is used unsafely in {alert.file_path} "
+            f"at lines {alert.line_range.start}-{alert.line_range.end}, "
+            f"enabling {alert.rule_name}."
+        ),
+        fix_strategy=(
+            f"Apply the standard remediation pattern for {alert.cwe}: "
+            f"{alert.security_guidance}"
+        ),
+        affected_files=[alert.file_path],
+        test_plan=(
+            f"Add test case verifying that malicious input to the vulnerable "
+            f"code path in {alert.file_path} is safely handled."
+        ),
+        confidence="MEDIUM",
+    )
+
+    insights = SessionInsights(
+        summary=(
+            f"Devin analyzed {alert.cwe} ({alert.rule_name}) in "
+            f"{alert.file_path} and applied the recommended remediation."
+        ),
+        changes_made=(
+            f"Modified {alert.file_path} to neutralize the {alert.cwe} vector."
+        ),
+        tests_added="Added regression test for the vulnerable code path.",
+        reviewer_notes=(
+            f"Security review recommended: {alert.cwe} fix confidence is MEDIUM. "
+            f"Verify the fix covers all input paths to the affected code."
+        ),
+    )
+
+    return DevinSession(
+        session_id=session_id,
+        disposition="PR_READY",
+        confidence="MEDIUM",
+        pr_url=f"https://github.com/violethawk/{alert.repo_name}/pull/3",
+        integration_mode="stub",
+        plan=plan,
+        insights=insights,
+    )
+
+
 # ---------------------------------------------------------------------------
-# Real implementation
+# Real implementations
 # ---------------------------------------------------------------------------
 
 
 def _create_devin_session(alert: Alert) -> dict:
-    """POST to Devin API to create a new remediation session."""
+    """POST to Devin API to create a basic remediation session."""
     prompt = build_prompt(alert)
 
     body = {
@@ -171,6 +312,23 @@ def _create_devin_session(alert: Alert) -> dict:
         "idempotent": True,
         "tags": [
             f"sage:{alert.alert_id}",
+            f"cwe:{alert.cwe}",
+            f"severity:{alert.severity}",
+        ],
+    }
+
+    return _api_request("POST", "/sessions", body)
+
+
+def _create_remediation_session(alert: Alert) -> dict:
+    """POST to Devin API with structured output schema for full remediation."""
+    body = {
+        "prompt": _build_remediation_prompt(alert),
+        "structured_output_schema": _REMEDIATION_OUTPUT_SCHEMA,
+        "idempotent": True,
+        "tags": [
+            f"sage:{alert.alert_id}",
+            f"sage:remediate_with_review",
             f"cwe:{alert.cwe}",
             f"severity:{alert.severity}",
         ],
@@ -198,44 +356,62 @@ def _poll_session(session_id: str) -> dict:
 
 def _extract_pr_url(session_data: dict) -> str:
     """Extract the PR URL from a completed Devin session."""
-    # v1/v3: pull_requests is a list of {pr_url, pr_state}
     prs = session_data.get("pull_requests", [])
     for pr in prs:
         url = pr.get("pr_url", "")
         if url:
             return url
 
-    # Fallback: check structured_output
     output = session_data.get("structured_output") or {}
     return output.get("pr_url", "")
+
+
+def _extract_plan(session_data: dict) -> RemediationPlan:
+    """Extract the remediation plan from structured output."""
+    output = session_data.get("structured_output") or {}
+    return RemediationPlan(
+        root_cause=output.get("root_cause", ""),
+        fix_strategy=output.get("fix_strategy", ""),
+        affected_files=output.get("affected_files", []),
+        test_plan=output.get("test_plan", ""),
+        confidence=output.get("confidence", "MEDIUM"),
+    )
+
+
+def _fetch_insights(session_id: str) -> SessionInsights:
+    """Fetch post-session insights from Devin.
+
+    Tries POST /v1/session/{id}/insights. If the endpoint is not
+    available, returns empty insights gracefully.
+    """
+    try:
+        data = _api_request("POST", f"/session/{session_id}/insights")
+        return SessionInsights(
+            summary=data.get("summary", ""),
+            changes_made=data.get("changes_made", ""),
+            tests_added=data.get("tests_added", ""),
+            reviewer_notes=data.get("reviewer_notes", ""),
+        )
+    except RuntimeError:
+        # Insights endpoint may not be available — degrade gracefully
+        return SessionInsights()
 
 
 def _create_session_real(
     alert: Alert, disposition: str, confidence: str,
 ) -> DevinSession:
-    """Create a real Devin session, poll to completion, and return results.
-
-    Flow:
-        1. POST /v1/sessions with the remediation prompt
-        2. Poll GET /v1/session/{id} until terminal state
-        3. Extract PR URL from session data
-        4. Map Devin status to SAGE disposition
-    """
-    # Create session
+    """Create a real Devin session, poll to completion, and return results."""
     create_resp = _create_devin_session(alert)
     session_id = create_resp.get("session_id", "")
-    session_url = create_resp.get("url", "")
 
     if not session_id:
         raise RuntimeError(
             f"Devin API did not return a session_id: {create_resp}"
         )
 
-    # Poll for completion
     final_data = _poll_session(session_id)
     status = final_data.get("status", "error")
 
-    # Map Devin status to SAGE disposition
     if status in _SUCCESS_STATUSES:
         pr_url = _extract_pr_url(final_data)
         if pr_url:
@@ -247,7 +423,6 @@ def _create_session_real(
                 integration_mode="real",
             )
         else:
-            # Devin finished but no PR — treat as needing review
             return DevinSession(
                 session_id=session_id,
                 disposition="NEEDS_HUMAN_REVIEW",
@@ -256,7 +431,6 @@ def _create_session_real(
                 integration_mode="real",
             )
     else:
-        # Error, timeout, or stopped — escalate
         return DevinSession(
             session_id=session_id or f"devin-error-{uuid.uuid4().hex[:8]}",
             disposition="NEEDS_HUMAN_REVIEW",
@@ -266,8 +440,59 @@ def _create_session_real(
         )
 
 
+def _remediate_real(alert: Alert) -> DevinSession:
+    """Full Devin remediation: plan → patch → PR → insights.
+
+    This is the REMEDIATE_WITH_REVIEW path. Devin acts as the primary
+    execution engine, not a sidecar.
+    """
+    # 1. Create session with structured output for remediation plan
+    create_resp = _create_remediation_session(alert)
+    session_id = create_resp.get("session_id", "")
+
+    if not session_id:
+        raise RuntimeError(
+            f"Devin API did not return a session_id: {create_resp}"
+        )
+
+    # 2. Poll for completion
+    final_data = _poll_session(session_id)
+    status = final_data.get("status", "error")
+
+    # 3. Extract plan from structured output
+    plan = _extract_plan(final_data)
+
+    # 4. Fetch post-session insights
+    insights = SessionInsights()
+    if status in _SUCCESS_STATUSES:
+        insights = _fetch_insights(session_id)
+
+    # 5. Build result
+    if status in _SUCCESS_STATUSES:
+        pr_url = _extract_pr_url(final_data)
+        return DevinSession(
+            session_id=session_id,
+            disposition="PR_READY" if pr_url else "NEEDS_HUMAN_REVIEW",
+            confidence=plan.confidence or "MEDIUM",
+            pr_url=pr_url,
+            integration_mode="real",
+            plan=plan,
+            insights=insights,
+        )
+    else:
+        return DevinSession(
+            session_id=session_id or f"devin-error-{uuid.uuid4().hex[:8]}",
+            disposition="NEEDS_HUMAN_REVIEW",
+            confidence="LOW",
+            pr_url="",
+            integration_mode="real",
+            plan=plan,
+            insights=insights,
+        )
+
+
 # ---------------------------------------------------------------------------
-# Public entry point
+# Public entry points
 # ---------------------------------------------------------------------------
 
 
@@ -276,10 +501,26 @@ def create_session(
 ) -> DevinSession:
     """Create a Devin session using the configured mode.
 
-    Set DEVIN_MODE=real and DEVIN_API_KEY=<key> to use the live API.
-    Defaults to stub mode for local development and demos.
+    Used for basic session tracking (AUTO_REMEDIATE path).
     """
     mode = _get_mode()
     if mode == "real":
         return _create_session_real(alert, disposition, confidence)
     return _create_session_stub(alert, disposition, confidence)
+
+
+def remediate(alert: Alert) -> DevinSession:
+    """Run a full Devin remediation session (REMEDIATE_WITH_REVIEW path).
+
+    Devin is the primary execution engine here:
+        1. Analyzes the finding and produces a remediation plan
+        2. Implements the patch + tests
+        3. Opens a PR
+        4. Returns structured output + insights for audit
+
+    In stub mode, simulates the full flow with realistic output.
+    """
+    mode = _get_mode()
+    if mode == "real":
+        return _remediate_real(alert)
+    return _remediate_stub(alert)
