@@ -1,0 +1,153 @@
+name: SAGE Remediation
+
+# Trigger: after CodeQL analysis completes, or on schedule, or manually
+on:
+  # Run after CodeQL workflow completes
+  workflow_run:
+    workflows: ["CodeQL"]
+    types: [completed]
+
+  # Run on a schedule (e.g., hourly enforcement checks)
+  schedule:
+    - cron: "0 * * * *"
+
+  # Manual trigger for on-demand runs
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        required: true
+        default: "remediate"
+        type: choice
+        options:
+          - remediate
+          - enforce
+          - metrics
+
+jobs:
+  # -------------------------------------------------------------------
+  # Remediate: Process new CodeQL findings through the SAGE pipeline
+  # -------------------------------------------------------------------
+  remediate:
+    if: >
+      github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'remediate' ||
+      github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      security-events: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download CodeQL SARIF
+        if: github.event_name == 'workflow_run'
+        run: |
+          # Download the SARIF artifact from the CodeQL workflow run
+          gh run download ${{ github.event.workflow_run.id }} \
+            --name sarif-results \
+            --dir sarif-output/ || true
+
+          # Fallback: export via code-scanning API
+          if [ ! -f sarif-output/*.sarif ]; then
+            gh api repos/${{ github.repository }}/code-scanning/analyses \
+              --jq '.[0].sarif_id' | xargs -I{} \
+              gh api repos/${{ github.repository }}/code-scanning/sarifs/{} \
+              > sarif-output/results.sarif || true
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run SAGE pipeline
+        run: |
+          if [ -d sarif-output ] && ls sarif-output/*.sarif 1>/dev/null 2>&1; then
+            echo "Processing SARIF output..."
+            python run_sarif.py sarif-output/*.sarif --repo .
+          else
+            echo "No SARIF found. Processing fixture alerts..."
+            python run_batch.py fixtures/
+          fi
+        env:
+          DEVIN_MODE: ${{ secrets.DEVIN_API_KEY && 'real' || 'stub' }}
+          DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+          PR_MODE: github
+          NOTIFY_MODE: ${{ secrets.SLACK_WEBHOOK_URL && 'slack' || 'stub' }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Run enforcement check
+        run: python run_enforce.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sage-artifacts
+          path: |
+            artifacts/
+            pipeline.db
+
+  # -------------------------------------------------------------------
+  # Enforce: SLA checks and escalation (runs on schedule)
+  # -------------------------------------------------------------------
+  enforce:
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'enforce'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download pipeline DB
+        uses: actions/download-artifact@v4
+        with:
+          name: sage-artifacts
+          path: .
+        continue-on-error: true
+
+      - name: Run enforcement
+        run: python run_enforce.py
+        env:
+          NOTIFY_MODE: ${{ secrets.SLACK_WEBHOOK_URL && 'slack' || 'stub' }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Upload updated DB
+        uses: actions/upload-artifact@v4
+        with:
+          name: sage-artifacts
+          path: |
+            artifacts/
+            pipeline.db
+          overwrite: true
+
+  # -------------------------------------------------------------------
+  # Metrics: Generate and display remediation metrics
+  # -------------------------------------------------------------------
+  metrics:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'metrics'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download pipeline DB
+        uses: actions/download-artifact@v4
+        with:
+          name: sage-artifacts
+          path: .
+        continue-on-error: true
+
+      - name: Display metrics
+        run: python run_metrics.py

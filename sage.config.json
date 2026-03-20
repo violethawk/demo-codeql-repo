@@ -1,0 +1,23 @@
+{
+  "reviewers": {
+    "backend": ["backend-dev-1", "backend-dev-2"],
+    "frontend": ["frontend-dev-1"],
+    "platform": ["platform-dev-1", "platform-dev-2"],
+    "infra": ["infra-dev-1"]
+  },
+  "security_reviewers": ["security-lead"],
+  "slack": {
+    "channels": {
+      "backend": "#backend-security",
+      "frontend": "#frontend-security",
+      "platform": "#platform-security",
+      "infra": "#infra-security",
+      "default": "#security-alerts"
+    },
+    "escalation_channels": {
+      "remind_owner": "",
+      "escalate_manager": "#engineering-leads",
+      "sla_breach": "#security-escalations"
+    }
+  }
+}

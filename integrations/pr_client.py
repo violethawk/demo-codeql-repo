@@ -64,15 +64,18 @@ class PRDeliveryResult:
 ARTIFACT_PATH = "artifacts/pr_payload.json"
 
 
-# Maps owner_team to GitHub usernames for code review assignment.
-# In production, this would come from a config file or GitHub CODEOWNERS.
-TEAM_REVIEWERS: dict[str, list[str]] = {
-    "backend": [],
-    "frontend": [],
-    "platform": [],
-    "infra": [],
-}
-SECURITY_REVIEWERS: list[str] = []  # GitHub usernames for security review
+def _load_reviewer_config() -> tuple[dict[str, list[str]], list[str]]:
+    """Load reviewer mappings from sage.config.json."""
+    config_path = Path("sage.config.json")
+    if config_path.exists():
+        config = json.loads(config_path.read_text())
+        team = config.get("reviewers", {})
+        security = config.get("security_reviewers", [])
+        return team, security
+    return {}, []
+
+
+TEAM_REVIEWERS, SECURITY_REVIEWERS = _load_reviewer_config()
 
 
 def build_pr_payload(

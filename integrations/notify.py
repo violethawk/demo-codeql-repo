@@ -1,15 +1,17 @@
-"""Notification Layer: Notify engineering teams of remediation outcomes.
+"""Notification Layer: Deliver notifications to engineering teams.
 
-Integration boundary:
-    build_notification()  → assembles a NotificationPayload dataclass
-    deliver_notification() → stub: writes JSON artifact to disk
-                              real: would POST to Slack / PagerDuty / email
+Supports two delivery modes:
 
-To connect to a real channel, replace the body of deliver_notification()
-with the appropriate API call (e.g., Slack chat.postMessage).
+    NOTIFY_MODE=stub  (default) -- Writes JSON artifact to disk.
+    NOTIFY_MODE=slack           -- POSTs to Slack incoming webhook.
+
+For Slack, set SLACK_WEBHOOK_URL to your workspace's incoming webhook URL.
 """
 
 import json
+import os
+import urllib.request
+import urllib.error
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -32,7 +34,7 @@ class NotificationPayload:
     disposition: str
     pr_url: str
     owner_team: str
-    status: str  # "ready_for_review" | "needs_attention"
+    status: str  # "ready_for_review" | "needs_attention" | "escalation" | "sla_breach"
     message: str
     integration_mode: str = "stub"
 
@@ -42,25 +44,41 @@ class NotificationDeliveryResult:
     """Result of attempting to deliver the notification."""
 
     delivered: bool
-    method: str  # "stub_artifact" | "slack_api" | "email"
+    method: str  # "stub_artifact" | "slack_webhook"
     artifact_path: str = ""
     error: str = ""
 
 
 # ---------------------------------------------------------------------------
-# Payload builder
+# Configuration (loaded from sage.config.json + env vars)
 # ---------------------------------------------------------------------------
 
 ARTIFACT_PATH = "artifacts/notification_payload.json"
 
-# Route notifications to the appropriate team channel
-TEAM_CHANNELS: dict[str, str] = {
-    "backend": "#backend-security",
-    "frontend": "#frontend-security",
-    "platform": "#platform-security",
-    "infra": "#infra-security",
-}
-DEFAULT_CHANNEL = "#security-alerts"
+
+def _load_channel_config() -> tuple[dict[str, str], str, dict[str, str]]:
+    """Load channel mappings from sage.config.json."""
+    config_path = Path("sage.config.json")
+    if config_path.exists():
+        config = json.loads(config_path.read_text())
+        slack = config.get("slack", {})
+        channels = slack.get("channels", {})
+        default = channels.pop("default", "#security-alerts")
+        escalation = slack.get("escalation_channels", {})
+        return channels, default, escalation
+    return {}, "#security-alerts", {}
+
+
+TEAM_CHANNELS, DEFAULT_CHANNEL, ESCALATION_CHANNELS = _load_channel_config()
+
+
+def _get_notify_mode() -> str:
+    return os.environ.get("NOTIFY_MODE", "stub")
+
+
+# ---------------------------------------------------------------------------
+# Payload builder
+# ---------------------------------------------------------------------------
 
 
 def build_notification(
@@ -100,35 +118,122 @@ def build_notification(
 
 
 # ---------------------------------------------------------------------------
-# Delivery (stub writes JSON; real would POST to Slack / PagerDuty)
+# Delivery
 # ---------------------------------------------------------------------------
+
+
+def _deliver_slack(payload: NotificationPayload) -> NotificationDeliveryResult:
+    """POST to Slack incoming webhook."""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL", "")
+    if not webhook_url:
+        return NotificationDeliveryResult(
+            delivered=False,
+            method="slack_webhook",
+            error="SLACK_WEBHOOK_URL not set",
+        )
+
+    # Build Slack Block Kit message
+    status_emoji = {
+        "ready_for_review": ":white_check_mark:",
+        "needs_attention": ":warning:",
+        "escalation": ":rotating_light:",
+        "sla_breach": ":red_circle:",
+    }.get(payload.status, ":information_source:")
+
+    slack_body = {
+        "channel": payload.channel,
+        "text": payload.message,
+        "blocks": [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"{status_emoji} SAGE: {payload.alert_id}",
+                },
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*CWE:* {payload.cwe}"},
+                    {"type": "mrkdwn", "text": f"*Status:* {payload.status}"},
+                    {"type": "mrkdwn", "text": f"*Team:* {payload.owner_team}"},
+                    {"type": "mrkdwn", "text": f"*Disposition:* {payload.disposition}"},
+                ],
+            },
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": payload.message},
+            },
+        ],
+    }
+
+    if payload.pr_url:
+        slack_body["blocks"].append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "View PR"},
+                    "url": payload.pr_url,
+                },
+            ],
+        })
+
+    data = json.dumps(slack_body).encode()
+    req = urllib.request.Request(
+        webhook_url,
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return NotificationDeliveryResult(
+                delivered=True,
+                method="slack_webhook",
+            )
+    except (urllib.error.HTTPError, urllib.error.URLError) as e:
+        return NotificationDeliveryResult(
+            delivered=False,
+            method="slack_webhook",
+            error=str(e),
+        )
+
+
+def _deliver_stub(
+    payload: NotificationPayload,
+    output_path: str,
+) -> NotificationDeliveryResult:
+    """Write notification as JSON artifact (no network calls)."""
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_text(json.dumps(asdict(payload), indent=2) + "\n")
+    return NotificationDeliveryResult(
+        delivered=True,
+        method="stub_artifact",
+        artifact_path=output_path,
+    )
 
 
 def deliver_notification(
     payload: NotificationPayload,
     output_path: str = ARTIFACT_PATH,
 ) -> NotificationDeliveryResult:
-    """Deliver the notification.
+    """Deliver a notification using the configured mode.
 
-    Stub mode:  serialize to a JSON artifact on disk.
-    Real mode:  would POST to Slack / PagerDuty / email (placeholder).
-
-    To implement real delivery, replace the body with:
-
-        import requests
-        resp = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {slack_token}"},
-            json={"channel": payload.channel,
-                  "text": payload.message},
-        )
-        resp.raise_for_status()
-        return NotificationDeliveryResult(
-            delivered=True, method="slack_api",
-        )
+    Set NOTIFY_MODE=slack and SLACK_WEBHOOK_URL to deliver to Slack.
+    Always writes the artifact to disk for audit regardless of mode.
     """
+    # Always write artifact for audit trail
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     Path(output_path).write_text(json.dumps(asdict(payload), indent=2) + "\n")
+
+    mode = _get_notify_mode()
+    if mode == "slack":
+        result = _deliver_slack(payload)
+        result.artifact_path = output_path
+        return result
+
     return NotificationDeliveryResult(
         delivered=True,
         method="stub_artifact",
@@ -139,12 +244,6 @@ def deliver_notification(
 # ---------------------------------------------------------------------------
 # Escalation notifications
 # ---------------------------------------------------------------------------
-
-ESCALATION_CHANNELS: dict[str, str] = {
-    "remind_owner": "",       # goes to team channel
-    "escalate_manager": "#engineering-leads",
-    "sla_breach": "#security-escalations",
-}
 
 
 def build_escalation_notification(
@@ -195,7 +294,7 @@ def build_escalation_notification(
         owner_team=owner_team,
         status=status,
         message=message,
-        integration_mode="stub",
+        integration_mode=_get_notify_mode(),
     )
 
 
