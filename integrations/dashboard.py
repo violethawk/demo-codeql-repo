@@ -1,8 +1,8 @@
-"""Dashboard Generator: Produce a simple HTML status page from artifacts.
+"""Dashboard Generator: Produce a polished HTML status page from artifacts.
 
-Reads the remediation report JSON and renders a single-page HTML dashboard
-so reviewers can see the state of the remediation loop without reading
-raw JSON files.
+Reads the remediation report, PR payload, and notification payload JSON
+files and renders a single-page HTML dashboard so reviewers can see
+the state of the remediation loop without reading raw JSON.
 
 Usage:
     from integrations.dashboard import generate_dashboard
@@ -32,6 +32,14 @@ def _status_color(disposition: str) -> str:
     return "#6b7280"  # gray
 
 
+def _confidence_color(confidence: str) -> str:
+    if confidence == "HIGH":
+        return "#22c55e"
+    if confidence == "MEDIUM":
+        return "#f59e0b"
+    return "#ef4444"
+
+
 def generate_dashboard(
     output_path: str = OUTPUT_FILE,
 ) -> str:
@@ -47,7 +55,11 @@ def generate_dashboard(
         report = {"alert_id": "N/A", "disposition": "UNKNOWN"}
 
     disposition = report.get("disposition", "UNKNOWN")
-    color = _status_color(disposition)
+    disp_color = _status_color(disposition)
+    confidence = report.get("confidence", "")
+    conf_color = _confidence_color(confidence)
+    final_status = "COMPLETE" if disposition == "PR_READY" else "ESCALATED"
+    final_color = "#22c55e" if disposition == "PR_READY" else "#f59e0b"
 
     pr_url = report.get("pr_url", "")
     pr_link = f'<a href="{pr_url}">{pr_url}</a>' if pr_url else "N/A"
@@ -57,6 +69,7 @@ def generate_dashboard(
 
     integration_mode = report.get("integration_mode", "unknown")
 
+    # Validation rows
     validation_rows = ""
     for step in report.get("validation", []):
         result = step.get("result", "")
@@ -70,6 +83,7 @@ def generate_dashboard(
             f"</tr>\n"
         )
 
+    # PR detail section
     pr_section = ""
     if pr_payload:
         pr_section = f"""
@@ -83,11 +97,12 @@ def generate_dashboard(
       </table>
     </div>"""
 
+    # Notification detail section
     notif_section = ""
     if notification:
         notif_section = f"""
     <div class="card">
-      <h2>Notification</h2>
+      <h2>Notification Detail</h2>
       <table>
         <tr><td><strong>Channel</strong></td><td>#{notification.get('channel', '')}</td></tr>
         <tr><td><strong>Owner Team</strong></td><td>{notification.get('owner_team', '')}</td></tr>
@@ -104,58 +119,95 @@ def generate_dashboard(
   <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           background: #f8fafc; color: #1e293b; padding: 2rem; max-width: 800px; margin: auto; }}
-    h1 {{ font-size: 1.5rem; margin-bottom: 1.5rem; }}
+           background: #f8fafc; color: #1e293b; padding: 2rem; max-width: 860px; margin: auto; }}
+    h1 {{ font-size: 1.6rem; margin-bottom: 0.25rem; }}
+    .subtitle {{ color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; }}
+    .hero {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+             padding: 1.5rem; margin-bottom: 1.25rem;
+             display: flex; justify-content: space-between; align-items: center;
+             flex-wrap: wrap; gap: 1rem; }}
+    .hero-left {{ flex: 1; min-width: 200px; }}
+    .hero-id {{ font-size: 1.1rem; font-weight: 700; }}
+    .hero-rule {{ color: #475569; font-size: 0.9rem; margin-top: 0.15rem; }}
+    .hero-right {{ display: flex; gap: 0.75rem; flex-wrap: wrap; }}
+    .hero-badge {{ text-align: center; padding: 0.5rem 1rem; border-radius: 6px;
+                   color: #fff; font-weight: 700; font-size: 0.85rem;
+                   min-width: 100px; }}
     .card {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
              padding: 1.25rem; margin-bottom: 1rem; }}
-    .card h2 {{ font-size: 1rem; margin-bottom: 0.75rem; color: #475569; }}
+    .card h2 {{ font-size: 1rem; margin-bottom: 0.75rem; color: #475569;
+                border-bottom: 1px solid #f1f5f9; padding-bottom: 0.4rem; }}
     table {{ width: 100%; border-collapse: collapse; }}
-    td {{ padding: 0.35rem 0.5rem; border-bottom: 1px solid #f1f5f9; vertical-align: top; }}
-    td:first-child {{ width: 160px; font-weight: 600; color: #64748b; }}
-    code {{ background: #f1f5f9; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85rem; }}
+    td, th {{ padding: 0.4rem 0.5rem; border-bottom: 1px solid #f1f5f9;
+              vertical-align: top; text-align: left; }}
+    td:first-child {{ width: 170px; font-weight: 600; color: #64748b; }}
+    code {{ background: #f1f5f9; padding: 0.15rem 0.4rem; border-radius: 3px;
+            font-size: 0.85rem; }}
     a {{ color: #2563eb; text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
     .badge {{ display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px;
               color: #fff; font-weight: 700; font-size: 0.85rem; }}
-    .footer {{ margin-top: 2rem; font-size: 0.8rem; color: #94a3b8; text-align: center; }}
+    .mode-tag {{ display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px;
+                 background: #e2e8f0; color: #475569; font-size: 0.8rem;
+                 font-weight: 600; }}
+    .footer {{ margin-top: 2rem; font-size: 0.8rem; color: #94a3b8;
+               text-align: center; }}
   </style>
 </head>
 <body>
   <h1>CodeQL Remediation Dashboard</h1>
+  <div class="subtitle">Automated security alert remediation pipeline</div>
 
+  <!-- Hero: at-a-glance status -->
+  <div class="hero">
+    <div class="hero-left">
+      <div class="hero-id">{report.get('alert_id', '')}</div>
+      <div class="hero-rule">{report.get('rule_name', '')} &mdash; <code>{report.get('cwe', '')}</code></div>
+    </div>
+    <div class="hero-right">
+      <div class="hero-badge" style="background:{disp_color}">{disposition}</div>
+      <div class="hero-badge" style="background:{conf_color}">{confidence}</div>
+      <div class="hero-badge" style="background:{final_color}">{final_status}</div>
+    </div>
+  </div>
+
+  <!-- Alert details -->
   <div class="card">
-    <h2>Alert Summary</h2>
+    <h2>Alert</h2>
     <table>
       <tr><td><strong>Alert ID</strong></td><td>{report.get('alert_id', '')}</td></tr>
-      <tr><td><strong>Disposition</strong></td>
-          <td><span class="badge" style="background:{color}">{disposition}</span></td></tr>
-      <tr><td><strong>Confidence</strong></td><td>{report.get('confidence', '')}</td></tr>
+      <tr><td><strong>Rule</strong></td><td>{report.get('rule_name', '')}</td></tr>
+      <tr><td><strong>CWE</strong></td><td>{report.get('cwe', '')}</td></tr>
       <tr><td><strong>Decision Trace</strong></td><td>{report.get('decision_trace', '')}</td></tr>
-      <tr><td><strong>Integration Mode</strong></td><td>{integration_mode}</td></tr>
+      <tr><td><strong>Integration Mode</strong></td>
+          <td><span class="mode-tag">{integration_mode}</span></td></tr>
+      <tr><td><strong>Timestamp</strong></td><td>{report.get('timestamp', '')}</td></tr>
     </table>
   </div>
 
+  <!-- Remediation details -->
   <div class="card">
     <h2>Remediation</h2>
     <table>
-      <tr><td><strong>Summary</strong></td><td>{report.get('summary', '')}</td></tr>
-      <tr><td><strong>Root Cause</strong></td><td>{report.get('root_cause', '')}</td></tr>
-      <tr><td><strong>Fix</strong></td><td>{report.get('fix', '')}</td></tr>
-      <tr><td><strong>Why It Works</strong></td><td>{report.get('why_fix_works', '')}</td></tr>
-      <tr><td><strong>Scope</strong></td><td>{report.get('scope', '')}</td></tr>
-      <tr><td><strong>Residual Risk</strong></td><td>{report.get('residual_risk', '')}</td></tr>
+      <tr><td><strong>Summary</strong></td><td>{report.get('summary', 'N/A')}</td></tr>
+      <tr><td><strong>Root Cause</strong></td><td>{report.get('root_cause', '') or 'N/A'}</td></tr>
+      <tr><td><strong>Fix</strong></td><td>{report.get('fix', '') or 'N/A'}</td></tr>
+      <tr><td><strong>Why It Works</strong></td><td>{report.get('why_fix_works', '') or 'N/A'}</td></tr>
+      <tr><td><strong>Scope</strong></td><td>{report.get('scope', '') or 'N/A'}</td></tr>
+      <tr><td><strong>Residual Risk</strong></td><td>{report.get('residual_risk', '') or 'N/A'}</td></tr>
     </table>
   </div>
 
+  <!-- Validation -->
   <div class="card">
     <h2>Validation</h2>
     <table>
-      <tr><th style="text-align:left;color:#64748b">Command</th>
-          <th style="text-align:left;color:#64748b">Result</th></tr>
+      <tr><th>Command</th><th>Result</th></tr>
       {validation_rows if validation_rows else '<tr><td colspan="2">No validation steps recorded</td></tr>'}
     </table>
   </div>
 
+  <!-- Delivery -->
   <div class="card">
     <h2>Delivery</h2>
     <table>
@@ -163,14 +215,13 @@ def generate_dashboard(
       <tr><td><strong>Notification</strong></td><td>{notif_status}</td></tr>
       <tr><td><strong>Files Changed</strong></td>
           <td>{', '.join(report.get('files_changed', [])) or 'None'}</td></tr>
-      <tr><td><strong>Timestamp</strong></td><td>{report.get('timestamp', '')}</td></tr>
     </table>
   </div>
 {pr_section}
 {notif_section}
 
   <div class="footer">
-    Generated from <code>artifacts/</code> &mdash; CodeQL Remediation Pipeline
+    Generated from <code>artifacts/</code> &mdash; CodeQL Remediation Pipeline (prototype)
   </div>
 </body>
 </html>

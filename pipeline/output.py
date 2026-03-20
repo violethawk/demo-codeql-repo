@@ -27,6 +27,8 @@ def build_report(
     if not triage_result.eligible:
         return {
             "alert_id": alert.alert_id,
+            "rule_name": alert.rule_name,
+            "cwe": alert.cwe,
             "disposition": "NEEDS_HUMAN_REVIEW",
             "confidence": "LOW",
             "files_changed": [],
@@ -50,6 +52,8 @@ def build_report(
         error_msg = exec_result.error if exec_result else "Execution not attempted"
         return {
             "alert_id": alert.alert_id,
+            "rule_name": alert.rule_name,
+            "cwe": alert.cwe,
             "disposition": "NEEDS_HUMAN_REVIEW",
             "confidence": "LOW",
             "files_changed": [],
@@ -76,6 +80,8 @@ def build_report(
         )
         return {
             "alert_id": alert.alert_id,
+            "rule_name": alert.rule_name,
+            "cwe": alert.cwe,
             "disposition": "NEEDS_HUMAN_REVIEW",
             "confidence": "MEDIUM",
             "files_changed": exec_result.files_changed,
@@ -102,6 +108,8 @@ def build_report(
     ]
     return {
         "alert_id": alert.alert_id,
+        "rule_name": alert.rule_name,
+        "cwe": alert.cwe,
         "disposition": "PR_READY",
         "confidence": "HIGH",
         "files_changed": exec_result.files_changed,
