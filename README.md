@@ -106,6 +106,29 @@ Two layers, both with teeth.
 
 KPIs aren't a dashboard. They drive system behavior. Thresholds configured in `sage.config.json`.
 
+```
+$ python -m sage enforce --dry-run
+
+  PER-FINDING SLA CHECKS
+--------------------------------------------------------------
+
+  3 finding(s) require action:
+
+  [~] demo-002          remind_owner          18.3h / 24h SLA  state=UNDER_REVIEW
+  [!] demo-004          escalate_manager      49.1h / 12h SLA  state=TRIAGED
+  [X] demo-005          sla_breach            73.6h / 12h SLA  state=DETECTED
+
+  AGGREGATE KPI ENFORCEMENT
+--------------------------------------------------------------
+
+  2 KPI violation(s):
+
+  [!] SLA Compliance Rate              33% (threshold: 80%)
+      Action: escalate_at_risk_findings
+  [!] Lifecycle Completion              20% (threshold: 80%)
+      Action: notify_security_lead
+```
+
 ---
 
 ## Developer experience
