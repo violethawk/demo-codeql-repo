@@ -49,7 +49,15 @@ Detection → Decision → Execution → Review → Enforcement → Evidence
 
 The local handler is the fast path for well-understood patterns — SQL injection with a known parameterization fix doesn't need an AI to reason about it. Devin handles the cases that do: cross-site scripting where the fix depends on rendering context, command injection where the safe alternative depends on what the subprocess actually does. CodeQL can detect these, but it can't fix them — its autofix covers a narrow set of pattern rewrites. A general-purpose copilot can suggest a patch, but it doesn't own the workflow. Devin creates a session, analyzes the surrounding code, plans a fix, opens a PR, and assigns the right reviewers. Policy decides which path — not the developer, not the tool.
 
-**Proof of live integration:** Devin has created real branches in this repo via API — see [`devin/*` branches](../../branches/all?query=devin) for session artifacts, plans, and PRs.
+**Proof of live integration** — Devin created these PRs via API, unprompted by a human:
+
+| PR | CWE | What Devin did |
+|---|---|---|
+| [#7](../../pull/7) | CWE-89 (SQL Injection) | Parameterized the query, added test coverage |
+| [#11](../../pull/11) | CWE-78 (Command Injection) | Replaced `os.system()` with safe subprocess call |
+| [#12](../../pull/12) | CWE-79 (XSS) | Added context-aware output escaping |
+
+Each PR includes Devin's remediation plan, root cause analysis, and fix implementation. See [`devin/*` branches](../../branches/all?query=devin) for full session artifacts.
 
 ---
 
@@ -185,7 +193,7 @@ All fall back to stub mode when env vars aren't set. `python -m sage check` vali
 | `NOTIFY_MODE` | Slack notifications | `stub` |
 | `SLACK_WEBHOOK_URL` | Slack delivery | — |
 
-All integrations have been tested live — see [`devin/*` branches](../../branches/all?query=devin) for real API session artifacts.
+All integrations have been tested live — see [PRs #7, #11, #12](../../pulls) for Devin-generated fixes.
 
 <details>
 <summary><strong>Architecture details</strong></summary>

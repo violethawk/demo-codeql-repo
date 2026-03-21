@@ -283,7 +283,7 @@ HTML = """\
     <div id="devin-banner" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;font-size:0.8rem;display:none">
       <span style="color:var(--cyan);font-weight:700">Devin API</span>
       <span style="color:var(--muted)"> &mdash; This demo runs in fast mode for responsiveness. Real Devin integration is proven by live PRs: </span>
-      <a href="https://github.com/violethawk/demo-codeql-repo/pull/10" style="color:var(--cyan)" target="_blank">PR #10 (XSS)</a>
+      <a href="https://github.com/violethawk/demo-codeql-repo/pull/7" style="color:var(--cyan)" target="_blank">PR #7 (SQLi)</a>
       <span style="color:var(--muted)"> &middot; </span>
       <a href="https://github.com/violethawk/demo-codeql-repo/pull/11" style="color:var(--cyan)" target="_blank">PR #11 (CMDi)</a>
       <span style="color:var(--muted)"> &middot; </span>
