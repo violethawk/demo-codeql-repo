@@ -1,4 +1,4 @@
-# SAGE
+# Security Automation & Governance Engine (SAGE)
 
 CodeQL flags dozens of new issues every week and they just pile up. Security files them, engineering ignores them, auditors flag the backlog. SAGE makes that operationally impossible.
 
