@@ -1,4 +1,4 @@
-"""Tests for CWE-78 command injection fix in target_repo/app.py."""
+"""Tests for CWE-78 command injection fix in demo/app.py."""
 
 import subprocess
 from unittest.mock import patch
@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'target_repo'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'demo'))
 
 from app import app, _is_valid_host
 
