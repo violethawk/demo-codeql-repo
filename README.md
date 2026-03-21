@@ -8,6 +8,8 @@ python -m sage interactive    # open http://localhost:8000
 
 Five vulnerable code blocks. Click one. Watch the policy engine decide, the execution layer fix it, and the routing panel show exactly which team, channel, and reviewer gets notified.
 
+**[Live demo](https://demo-codeql-repo.onrender.com/)** — no setup required.
+
 Built for MedSecure's security remediation challenge.
 
 ---
