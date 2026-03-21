@@ -942,7 +942,8 @@ def _self_test():
 
 
 def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    # PORT env var for cloud platforms (Railway, Render, etc.)
+    port = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 8000))
 
     # Self-test before serving
     print("\n  SAGE Interactive Demo")
