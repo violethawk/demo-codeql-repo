@@ -23,6 +23,7 @@ from pipeline import store
 from integrations.devin_client import (
     create_session, remediate as devin_remediate,
     build_prompt, _get_mode, DevinSession,
+    _create_session_stub,
 )
 from integrations.pr_client import build_pr_payload, deliver_pr
 from integrations.notify import build_notification, deliver_notification
@@ -336,30 +337,30 @@ def _execute_local(
     db_conn=None,
     quiet: bool = False,
 ) -> dict:
-    """Local fix handlers for AUTO_REMEDIATE (fast path, HIGH confidence)."""
+    """Local fix handlers for AUTO_REMEDIATE (fast path, HIGH confidence).
+
+    This path never calls the Devin API — it uses deterministic local
+    handlers for well-understood patterns. Fast and predictable.
+    """
     def _print(*args, **kwargs):
         if not quiet:
             print(*args, **kwargs)
 
-    mode = _get_mode()
-
-    # 3. Execution
-    _print("[3/9] Creating Devin remediation session...")
-    prompt = build_prompt(alert)
-    _print(f"  Mode:        {mode}")
-    _print(f"  Prompt task: {prompt['task']}")
-    _print(f"  Target:      {prompt['alert']['file_path']}")
+    # 3. Execution (local — no Devin API call)
+    _print("[3/9] Applying local fix (HIGH confidence)...")
+    _print(f"  CWE:    {alert.cwe}")
+    _print(f"  File:   {alert.file_path}")
     _print()
 
     # 4. Apply fix via local handler
-    _print("[4/9] Applying fix (local handler — HIGH confidence)...")
+    _print("[4/9] Applying fix...")
     exec_result = execute(alert, repo_root)
     if not exec_result.success:
         _print(f"  Error: {exec_result.error}")
-        session = create_session(alert, "NEEDS_HUMAN_REVIEW", "LOW")
+        session = _create_session_stub(alert, "NEEDS_HUMAN_REVIEW", "LOW")
         report = generate_report(
             alert, triage_result, exec_result, None,
-            integration_mode=session.integration_mode,
+            integration_mode="local",
         )
         if db_conn:
             store.record_alert(
@@ -381,10 +382,10 @@ def _execute_local(
     _print()
 
     if not val_result.passed:
-        session = create_session(alert, "NEEDS_HUMAN_REVIEW", "MEDIUM")
+        session = _create_session_stub(alert, "NEEDS_HUMAN_REVIEW", "MEDIUM")
         report = generate_report(
             alert, triage_result, exec_result, val_result,
-            integration_mode=session.integration_mode,
+            integration_mode="local",
         )
         if db_conn:
             store.record_alert(
@@ -394,9 +395,9 @@ def _execute_local(
         _finalize(alert, action, report, session, quiet=quiet)
         return report
 
-    # 6. Devin session complete
-    _print("[6/9] Devin session complete...")
-    session = create_session(alert, "PR_READY", "HIGH")
+    # 6. Fix applied successfully
+    _print("[6/9] Fix validated...")
+    session = _create_session_stub(alert, "PR_READY", "HIGH")
     _print(f"  Session ID:  {session.session_id}")
     _print(f"  Disposition: {session.disposition}")
     _print(f"  PR URL:      {session.pr_url}")
