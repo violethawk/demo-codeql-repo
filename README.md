@@ -192,7 +192,7 @@ Every transition is timestamped. Invalid transitions are rejected. `run_override
 ## Tests
 
 ```bash
-python -m pytest tests/ -v    # 72 tests
+python -m pytest tests/ -v    # 86 tests
 ```
 
 Covers: ingest, triage, policy, execute (3 CWEs × 4 SQL patterns), validate, store, enforcement (SLA + KPI-driven), notifications, escalation routing, dashboard, and human overrides.
