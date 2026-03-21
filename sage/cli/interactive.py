@@ -177,7 +177,7 @@ HTML = """\
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
            background: var(--bg); color: var(--text); min-height: 100vh; }
 
-    .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+    .container { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
 
     /* Header */
     .header { margin-bottom: 2rem; }
@@ -186,7 +186,7 @@ HTML = """\
     .header .sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
 
     /* Vulnerability cards */
-    .vuln-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .vuln-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
     .vuln-card { background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
                  padding: 1.25rem; cursor: pointer; transition: all 0.2s; position: relative; }
     .vuln-card:hover { border-color: var(--cyan); transform: translateY(-2px); }
@@ -204,10 +204,10 @@ HTML = """\
 
     .vuln-name { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; }
 
-    .code-block { background: var(--bg); border-radius: 6px; padding: 0.75rem;
+    .code-block { background: var(--bg); border-radius: 6px; padding: 0.6rem;
                   font-family: "SF Mono", "Fira Code", "Consolas", monospace;
-                  font-size: 0.75rem; line-height: 1.6; overflow-x: auto;
-                  white-space: pre; transition: all 0.5s; }
+                  font-size: 0.68rem; line-height: 1.5; overflow-x: auto;
+                  white-space: pre; transition: all 0.5s; word-break: break-all; }
     .code-vuln { border-left: 3px solid var(--red); }
     .code-fixed { border-left: 3px solid var(--green); }
 
