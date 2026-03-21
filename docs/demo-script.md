@@ -48,17 +48,9 @@ DEVIN_MODE=real DEVIN_API_KEY=your-key python -m sage interactive
 
 ---
 
-### 3. Policy Design — How Decisions Are Made (45 seconds)
+### 3. Policy Design — How Decisions Are Made (15 seconds)
 
-> "The next question is: how does the system decide what gets auto-fixed versus what gets routed to humans? That can't be a judgment call — it needs a framework your security team can audit."
->
-> "We anchor decisions to CISA's SSVC framework — Stakeholder-Specific Vulnerability Categorization. It evaluates each vulnerability on three axes: active exploitation, whether it's automatable at scale, and technical impact. SSVC gives a priority — Act, Attend, Track."
->
-> "SAGE extends this with a fourth axis: fix confidence. Can a deterministic code transform reliably fix this class of vulnerability? The combination drives the routing:"
->
-> - "High confidence — auto-remediate with a local handler. Instant, deterministic."
-> - "Medium confidence — Devin fixes it, but a security reviewer is required on the PR."
-> - "Low confidence — no auto-fix. Route to the owning team with a tight SLA."
+> "How does the system decide what gets auto-fixed versus what gets routed to humans? Routing decisions are anchored to CISA's SSVC framework — exploitation likelihood, impact, and fix confidence — so your security team can audit every triage call. You'll see the three paths in a moment: auto-fix, Devin-assisted fix with security review, and escalate to humans."
 
 ---
 
@@ -126,8 +118,8 @@ Highlight two or three:
 > "Enforcement runs on two layers. Per-finding: every finding has an SLA deadline. At 24 hours, the owner gets a Slack reminder. At 48 hours, it escalates to engineering leads. On SLA breach, security escalations gets notified."
 >
 > "And aggregate: the system evaluates KPI thresholds hourly. If compliance drops, it doesn't just report — it finds every at-risk finding and escalates them. If findings are unowned, it auto-assigns. The enforcement layer closes the gap that your audit flagged."
-
-> "And every action — every triage decision, every fix, every escalation, every human override — is recorded in an immutable audit trail with a timestamp, actor, and reason. When your compliance team asks 'what happened to finding X,' the answer is a query, not a meeting."
+>
+> "Every action — every triage decision, every fix, every escalation, every human override — is recorded in an immutable audit trail with a timestamp, actor, and reason. When your compliance team asks 'what happened to finding X,' the answer is a query, not a meeting."
 
 ---
 
@@ -147,7 +139,7 @@ Highlight two or three:
 >
 > "First, expanding CWE coverage. The policy registry is designed for this — adding a new vulnerability class is a four-step process: evaluate it against SSVC, assess fix confidence, add the policy entry, register the handler. Your security team can own this."
 >
-> "Second, integration depth. Right now SAGE supports Slack, GitHub, and Devin. But the notification and escalation layers are pluggable — Jira, PagerDuty, whatever your incident workflow uses."
+> "Second, integration depth. Right now SAGE supports Slack, GitHub, and Devin. But the notification and escalation layers are pluggable — Jira, PagerDuty, whatever your incident workflow uses. And for a HIPAA environment, the immutable audit log can feed directly into your compliance reporting — every finding's full lifecycle is already timestamped and queryable."
 >
 > "Third, the metrics tell a story over time. MTTR trending down. SLA compliance trending up. Auto-remediation rate climbing as you add CWE handlers. That's the evidence your compliance team wants at the next audit — not a promise that you'll do better, but data showing you already are."
 
@@ -161,12 +153,17 @@ Highlight two or three:
 
 ## Key lines to land
 
-1. "Your problem isn't detection. It's the gap between detection and resolution."
-2. "Devin owns the full workflow — your engineers interact with pull requests, not security tickets."
-3. "Devin operates inside a policy-controlled loop. It's the execution layer, not the decision-maker."
-4. "Policy decisions are anchored to CISA's SSVC framework — not judgment calls."
+**Non-negotiable — land these even if time runs short:**
+
+1. "Devin owns the full workflow — your engineers interact with pull requests, not security tickets."
+2. "The audit trail proves follow-through — a query, not a meeting."
+
+**Land if possible:**
+
+3. "Your problem isn't detection. It's the gap between detection and resolution."
+4. "Devin operates inside a policy-controlled loop. It's the execution layer, not the decision-maker."
 5. "KPIs drive system behavior, not dashboards. Nothing can silently stall."
-6. "The audit trail proves follow-through — a query, not a meeting."
+6. "Policy decisions are anchored to CISA's SSVC framework — not judgment calls."
 
 ---
 
@@ -176,12 +173,14 @@ Highlight two or three:
 |---|---|---|
 | 1. Opening — Restate the Problem | 30s | Talking point |
 | 2. Why Devin — Not Just Another Agent | 60s | Talking point |
-| 3. Policy Design — How Decisions Are Made | 45s | Talking point |
-| 4. Interactive Demo (3 cards) | 2.5m | Live demo |
+| 3. Policy Design — How Decisions Are Made | 15s | Talking point |
+| 4. Interactive Demo (3 cards) | 3m | Live demo |
 | 5. KPIs and Enforcement | 75s | Live demo + talking |
 | 6. Next Steps | 60s | Talking point |
 | 7. Closing | 15s | Talking point |
 | **Total** | **~7 minutes** | |
+
+> **Contingency:** If the demo runs long, CWE-79 (XSS/Devin card) is the safest cut — CWE-89 and CWE-798 together still show the full governance spectrum (auto-fix → escalate). Mention Devin's role verbally and point to the merged PRs instead.
 
 ---
 
