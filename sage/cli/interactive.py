@@ -534,7 +534,6 @@ HTML = """\
         // Update card based on execution path
         const devin = data.devin || {};
         const isDevinReal = devin.mode === 'real';
-        const isDevinPath = data.routing && data.routing.security_review;
 
         if (data.disposition === 'PR_READY') {
           card.className = 'vuln-card done';
