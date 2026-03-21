@@ -1,5 +1,5 @@
-import os
 import sqlite3
+import subprocess
 
 from flask import Flask, request, jsonify
 
@@ -32,7 +32,7 @@ def search_page():
 @app.route("/ping")
 def ping_host():
     host = request.args.get("host", "127.0.0.1")
-    os.system("ping -c 1 " + host)
+    subprocess.run(["ping", "-c", "1", host], capture_output=True)
     return jsonify({"status": "ok"})
 
 
