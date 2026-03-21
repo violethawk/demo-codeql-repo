@@ -406,14 +406,14 @@ HTML = """\
       }
     };
 
-    function narrate(key) {{
+    function narrate(key) {
       const n = narrations[key];
       const el = document.getElementById('narration');
-      if (!n) {{ el.style.display = 'none'; return; }}
+      if (!n) { el.style.display = 'none'; return; }
       document.getElementById('narration-title').textContent = n.title;
       document.getElementById('narration-body').textContent = n.body;
       el.style.display = 'block';
-    }}
+    }
 
     function addLine(text, cls = '') {
       const terminal = document.getElementById('terminal');
@@ -464,7 +464,7 @@ HTML = """\
         const isDevinPath = (cwe === 'CWE-79' || cwe === 'CWE-78');
         const devinMode = startData.devin_mode || 'stub';
 
-        if (isDevinPath && devinMode === 'real') {{
+        if (isDevinPath && devinMode === 'real') {
           addLine('[1/9] Ingesting alert...', 'line-header');
           addLine('  Alert: ' + cwe, 'line-info');
           addLine('', 'line-info');
@@ -473,9 +473,9 @@ HTML = """\
           addLine('', 'line-info');
           addLine('[3/9] Devin remediation session...', 'line-header');
           addLine('  Creating Devin session via API...', 'line-info');
-        }} else {{
+        } else {
           addLine('Processing...', 'line-info');
-        }}
+        }
 
         // Poll until done, showing Devin progress
         let data = null;
@@ -491,28 +491,28 @@ HTML = """\
           'Waiting for Devin session to complete...',
         ];
 
-        while (true) {{
+        while (true) {
           await new Promise(r => setTimeout(r, 2000));
           const pollResp = await fetch('/api/status/' + jobId);
           const pollData = await pollResp.json();
 
-          if (pollData.status === 'running') {{
-            if (isDevinPath && devinMode === 'real') {{
+          if (pollData.status === 'running') {
+            if (isDevinPath && devinMode === 'real') {
               const step = devinSteps[Math.min(pollCount, devinSteps.length - 1)];
               addLine('  ' + step, 'line-info');
-            }}
+            }
             pollCount++;
             continue;
-          }} else {{
+          } else {
             data = pollData;
             break;
-          }}
-        }}
+          }
+        }
 
-        if (isDevinPath && devinMode === 'real') {{
+        if (isDevinPath && devinMode === 'real') {
           addLine('  Session complete.', 'line-success');
           addLine('', 'line-info');
-        }}
+        }
 
         // Stream output with delay for visual effect
         clearTerminal();
@@ -578,12 +578,12 @@ HTML = """\
         }
 
         // Narrate the result
-        if (data.disposition === 'PR_READY') {{
+        if (data.disposition === 'PR_READY') {
           const action = (data.routing && data.routing.action) || 'AUTO_REMEDIATE';
           narrate('done-' + action);
-        }} else {{
+        } else {
           narrate('done-ESCALATED');
-        }}
+        }
 
         // Briefly show the governance narration, then show routing
         await new Promise(r => setTimeout(r, 2000));
