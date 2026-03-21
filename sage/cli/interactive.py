@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SAGE Interactive Demo: browser-based live remediation.
 
-    python run_interactive.py
+    python -m sage interactive
     # Open http://localhost:8000
 
 Click a vulnerability. Watch SAGE process it. See the code transform.

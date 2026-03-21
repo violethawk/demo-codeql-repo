@@ -3,7 +3,7 @@
 
 Run before deployment to verify everything is wired up:
 
-    python run_check.py
+    python -m sage check
 
 Checks:
     1. sage.config.json loads and has required fields

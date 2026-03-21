@@ -17,8 +17,9 @@ def get_db():
 @app.route("/search")
 def search_user():
     user_input = request.args.get("name", "")
+    query = f"SELECT * FROM users WHERE name = '{user_input}'"
     cursor = get_db().cursor()
-    cursor.execute("SELECT * FROM users WHERE name = ?", (user_input,))
+    cursor.execute(query)
     return jsonify([dict(r) for r in cursor.fetchall()])
 
 

@@ -2,9 +2,9 @@
 """Batch-process multiple CodeQL alerts through the remediation pipeline.
 
 Usage:
-    python run_batch.py demo/fixtures/              # all JSON files in a directory
-    python run_batch.py demo/fixtures/sample_*.json # glob pattern
-    python run_batch.py alert1.json alert2.json # explicit list
+    python -m sage batch demo/fixtures/              # all JSON files in a directory
+    python -m sage batch demo/fixtures/sample_*.json # glob pattern
+    python -m sage batch alert1.json alert2.json # explicit list
 """
 
 import glob
@@ -37,7 +37,7 @@ def resolve_paths(args: list[str]) -> list[str]:
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print("Usage: python run_batch.py <directory|glob|files...> [repo_root]")
+        print("Usage: python -m sage batch <directory|glob|files...> [repo_root]")
         return 1
 
     # Last arg might be repo_root if it's a directory without JSON files

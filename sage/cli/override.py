@@ -5,13 +5,13 @@ Humans must be able to reject, defer, or escalate a finding even after
 automated action is initiated. This is NFR-4.
 
 Usage:
-    python run_override.py demo-001 merge              # mark as merged
-    python run_override.py demo-001 close              # close without merge
-    python run_override.py demo-001 reject             # reject remediation
-    python run_override.py demo-001 defer              # defer to later
-    python run_override.py demo-001 escalate           # manual escalation
-    python run_override.py demo-001 reopen             # reopen a closed finding
-    python run_override.py demo-001 status             # show current state + audit trail
+    python -m sage override demo-001 merge              # mark as merged
+    python -m sage override demo-001 close              # close without merge
+    python -m sage override demo-001 reject             # reject remediation
+    python -m sage override demo-001 defer              # defer to later
+    python -m sage override demo-001 escalate           # manual escalation
+    python -m sage override demo-001 reopen             # reopen a closed finding
+    python -m sage override demo-001 status             # show current state + audit trail
 """
 
 import argparse

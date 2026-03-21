@@ -17,7 +17,7 @@ This script runs the complete SAGE lifecycle for a live demo:
                     view an auditor or security lead would inspect.
 
 Usage:
-    python run_full_demo.py
+    python -m sage full-demo
 
 The dashboard is not the product. It's just a view into a system that is
 continuously ingesting findings, making decisions, executing remediations
@@ -112,7 +112,7 @@ def phase_1_live_flow() -> None:
     for fixture, label in fixtures:
         section(f"Processing: {label}")
         restore_app()
-        run(f"python run_demo.py {fixture}")
+        run(f"python -m sage demo {fixture}")
         pause()
 
 
@@ -131,7 +131,7 @@ def phase_2_enforcement() -> None:
     pause()
 
     section("Running enforcement (dry-run)")
-    run("python run_enforce.py --dry-run")
+    run("python -m sage enforce --dry-run")
     pause()
 
 
@@ -145,11 +145,11 @@ def phase_3_override() -> None:
     pause()
 
     section("Merging demo-001")
-    run('python run_override.py demo-001 merge --reason "Reviewed and approved by security lead"')
+    run('python -m sage override demo-001 merge --reason "Reviewed and approved by security lead"')
     pause()
 
     section("Audit trail for demo-001")
-    run("python run_override.py demo-001 status")
+    run("python -m sage override demo-001 status")
     pause()
 
 
@@ -163,7 +163,7 @@ def phase_4_system_state() -> None:
     pause()
 
     section("Remediation metrics")
-    run("python run_metrics.py")
+    run("python -m sage metrics")
     pause()
 
     section("Generating aggregate governance dashboard")

@@ -24,7 +24,7 @@ def main() -> int:
     total = metrics["total"]
     if total == 0:
         print()
-        print("  No alerts tracked yet. Run 'python run_full_demo.py' first.")
+        print("  No alerts tracked yet. Run 'python -m sage full-demo' first.")
         print()
         db_conn.close()
         return 0

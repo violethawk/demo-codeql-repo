@@ -2,9 +2,9 @@
 """Ingest a CodeQL SARIF file and process all results through the pipeline.
 
 Usage:
-    python run_sarif.py results.sarif                    # process SARIF
-    python run_sarif.py results.sarif --repo demo # specify repo root
-    python run_sarif.py results.sarif --emit-fixtures     # just write fixture JSONs
+    python -m sage sarif results.sarif                    # process SARIF
+    python -m sage sarif results.sarif --repo demo # specify repo root
+    python -m sage sarif results.sarif --emit-fixtures     # just write fixture JSONs
 
 This is the intended production entry point: connect it to your CI/CD
 pipeline after `codeql database analyze` to auto-remediate findings.

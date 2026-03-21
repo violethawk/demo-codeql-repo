@@ -8,11 +8,11 @@ Two enforcement layers:
 
 Run on a schedule (e.g., cron every hour):
 
-    python run_enforce.py            # check and deliver
-    python run_enforce.py --dry-run  # check only, no delivery
+    python -m sage enforce            # check and deliver
+    python -m sage enforce --dry-run  # check only, no delivery
 
 Crontab example:
-    0 * * * * cd /path/to/repo && python run_enforce.py >> logs/enforce.log 2>&1
+    0 * * * * cd /path/to/repo && python -m sage enforce >> logs/enforce.log 2>&1
 """
 
 import argparse

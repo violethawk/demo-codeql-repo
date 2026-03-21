@@ -332,7 +332,7 @@ def apply_kpi_enforcement(db_conn, violations: list[KPIViolation]) -> list[str]:
                     )
 
         elif v.action == "notify_security_lead":
-            # This triggers a notification — the caller (run_enforce.py) handles delivery
+            # This triggers a notification — the caller (sage enforce) handles delivery
             actions_taken.append(f"Notification: {v.detail}")
 
     db_conn.commit()
