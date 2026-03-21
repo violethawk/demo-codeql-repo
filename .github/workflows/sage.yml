@@ -136,7 +136,7 @@ jobs:
             python run_batch.py sarif-output/
           else
             echo "No alerts to process. Running fixture demo..."
-            python run_batch.py fixtures/
+            python run_batch.py demo/fixtures/
           fi
         env:
           DEVIN_MODE: ${{ secrets.DEVIN_API_KEY && 'real' || 'stub' }}

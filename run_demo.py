@@ -35,7 +35,7 @@ SEPARATOR = "-" * 56
 
 def process_alert(
     alert_path: str,
-    repo_root: str = "target_repo",
+    repo_root: str = "demo",
     *,
     db_conn=None,
     quiet: bool = False,
@@ -538,8 +538,8 @@ def _print_summary(
 
 
 def main() -> int:
-    alert_path = sys.argv[1] if len(sys.argv) > 1 else "fixtures/sample_alert.json"
-    repo_root = sys.argv[2] if len(sys.argv) > 2 else "target_repo"
+    alert_path = sys.argv[1] if len(sys.argv) > 1 else "demo/fixtures/sample_alert.json"
+    repo_root = sys.argv[2] if len(sys.argv) > 2 else "demo"
 
     db_conn = store.init_db()
     report = process_alert(alert_path, repo_root, db_conn=db_conn)

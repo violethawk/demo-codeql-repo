@@ -24,7 +24,7 @@ _jobs_lock = threading.Lock()
 # Vulnerable app.py — the known-good starting state.
 # Hardcoded so the demo always starts from the vulnerable version,
 # regardless of what's on disk when the server launches.
-APP_PATH = Path("target_repo/app.py")
+APP_PATH = Path("demo/app.py")
 APP_ORIGINAL = '''\
 import os
 import sqlite3
@@ -97,9 +97,9 @@ FIXED_SNIPPETS = {
 }
 
 FIXTURES = {
-    "CWE-89": "fixtures/sample_alert.json",
-    "CWE-79": "fixtures/sample_alert_xss.json",
-    "CWE-78": "fixtures/sample_alert_cmdi.json",
+    "CWE-89": "demo/fixtures/sample_alert.json",
+    "CWE-79": "demo/fixtures/sample_alert_xss.json",
+    "CWE-78": "demo/fixtures/sample_alert_cmdi.json",
 }
 
 # Routing metadata for display
@@ -736,7 +736,7 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             db_conn = init_db()
-            report = process_alert(fixture, "target_repo", db_conn=db_conn)
+            report = process_alert(fixture, "demo", db_conn=db_conn)
             db_conn.close()
         except Exception as e:
             report = {"disposition": "ERROR", "error": str(e)}
@@ -817,7 +817,7 @@ def _self_test():
     sys.stdout = io.StringIO()
     try:
         db_conn = init_db()
-        report = process_alert("fixtures/sample_alert.json", "target_repo", db_conn=db_conn, quiet=True)
+        report = process_alert("demo/fixtures/sample_alert.json", "demo", db_conn=db_conn, quiet=True)
         db_conn.close()
     finally:
         sys.stdout = old_stdout
@@ -847,7 +847,7 @@ def main():
         print(f"OK ({detail})")
     else:
         print(f"FAILED ({detail})")
-        print("  The demo may not work correctly. Check target_repo/app.py")
+        print("  The demo may not work correctly. Check demo/app.py")
 
     devin_mode = os.environ.get("DEVIN_MODE", "stub")
     print(f"  Devin mode: {devin_mode}")

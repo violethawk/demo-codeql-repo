@@ -2,8 +2,8 @@
 """Batch-process multiple CodeQL alerts through the remediation pipeline.
 
 Usage:
-    python run_batch.py fixtures/              # all JSON files in a directory
-    python run_batch.py fixtures/sample_*.json # glob pattern
+    python run_batch.py demo/fixtures/              # all JSON files in a directory
+    python run_batch.py demo/fixtures/sample_*.json # glob pattern
     python run_batch.py alert1.json alert2.json # explicit list
 """
 
@@ -42,7 +42,7 @@ def main() -> int:
 
     # Last arg might be repo_root if it's a directory without JSON files
     args = sys.argv[1:]
-    repo_root = "target_repo"
+    repo_root = "demo"
 
     alert_paths = resolve_paths(args)
     if not alert_paths:
