@@ -1,9 +1,9 @@
-# SAGE
+# Security Automation & Governance Engine (SAGE)
 
 CodeQL flags dozens of new issues every week and they just pile up. Security files them, engineering ignores them, auditors flag the backlog. SAGE makes that operationally impossible.
 
 ```bash
-python run_interactive.py    # open http://localhost:8000
+python sage.py interactive    # open http://localhost:8000
 ```
 
 Three vulnerable code blocks. Click one. Watch the policy engine decide, the execution layer fix it, and the routing panel show exactly which team, channel, and reviewer gets notified.
@@ -39,26 +39,26 @@ The local handler is the fast path for well-understood patterns. Devin is the ex
 
 **Interactive** (recommended):
 ```bash
-python run_interactive.py
+python sage.py interactive
 ```
 
 **Full lifecycle** (5 phases — ingest, enforce, override, metrics, dashboard):
 ```bash
-python run_full_demo.py
+python sage.py full-demo
 ```
 
 <details>
 <summary><strong>All commands</strong></summary>
 
 ```bash
-python run_demo.py                              # single alert
-python run_batch.py fixtures/                   # batch processing
-python run_sarif.py fixtures/sample_scan.sarif  # real CodeQL SARIF input
-python run_metrics.py                           # all 9 KPIs
-python run_enforce.py                           # SLA + KPI enforcement
-python run_override.py demo-001 merge           # human override
-python run_override.py demo-001 status          # audit trail
-python run_check.py                             # validate deployment
+python sage.py demo                              # single alert
+python sage.py batch demo/fixtures/              # batch processing
+python sage.py sarif demo/fixtures/sample_scan.sarif  # SARIF input
+python sage.py metrics                           # all 9 KPIs
+python sage.py enforce                           # SLA + KPI enforcement
+python sage.py override demo-001 merge           # human override
+python sage.py override demo-001 status          # audit trail
+python sage.py check                             # validate deployment
 ```
 
 </details>
@@ -192,7 +192,7 @@ Every transition is timestamped. Invalid transitions are rejected. `run_override
 ## Tests
 
 ```bash
-python -m pytest tests/ -v    # 72 tests
+python -m pytest tests/ -v    # 86 tests
 ```
 
 Covers: ingest, triage, policy, execute (3 CWEs × 4 SQL patterns), validate, store, enforcement (SLA + KPI-driven), notifications, escalation routing, dashboard, and human overrides.

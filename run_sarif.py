@@ -3,7 +3,7 @@
 
 Usage:
     python run_sarif.py results.sarif                    # process SARIF
-    python run_sarif.py results.sarif --repo target_repo # specify repo root
+    python run_sarif.py results.sarif --repo demo # specify repo root
     python run_sarif.py results.sarif --emit-fixtures     # just write fixture JSONs
 
 This is the intended production entry point: connect it to your CI/CD
@@ -25,7 +25,7 @@ def main() -> int:
         description="SAGE: Process CodeQL SARIF output through the remediation pipeline",
     )
     parser.add_argument("sarif", help="Path to SARIF JSON file")
-    parser.add_argument("--repo", default="target_repo", help="Target repo root")
+    parser.add_argument("--repo", default="demo", help="Target repo root")
     parser.add_argument(
         "--emit-fixtures", action="store_true",
         help="Only write fixture JSONs (don't run the pipeline)",

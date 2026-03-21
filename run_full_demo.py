@@ -40,7 +40,7 @@ THIN_SEP = "-" * 62
 PAUSE = 0.6  # seconds between sections for readability
 
 # Path to the vulnerable app (we restore it between fixes)
-APP_PATH = Path("target_repo/app.py")
+APP_PATH = Path("demo/app.py")
 APP_ORIGINAL = None  # stored at startup
 
 
@@ -104,9 +104,9 @@ def phase_1_live_flow() -> None:
 
     # Process each fixture individually for visible output
     fixtures = [
-        ("fixtures/sample_alert.json", "CWE-89 SQL Injection"),
-        ("fixtures/sample_alert_xss.json", "CWE-79 Cross-Site Scripting"),
-        ("fixtures/sample_alert_cmdi.json", "CWE-78 Command Injection"),
+        ("demo/fixtures/sample_alert.json", "CWE-89 SQL Injection"),
+        ("demo/fixtures/sample_alert_xss.json", "CWE-79 Cross-Site Scripting"),
+        ("demo/fixtures/sample_alert_cmdi.json", "CWE-78 Command Injection"),
     ]
 
     for fixture, label in fixtures:

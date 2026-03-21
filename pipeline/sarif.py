@@ -1,4 +1,4 @@
-"""SARIF Ingestion: Convert CodeQL SARIF output into pipeline alert fixtures.
+"""SARIF Ingestion: Convert CodeQL SARIF output into pipeline alert demo/fixtures.
 
 CodeQL produces SARIF 2.1.0 JSON. This module parses it and emits one
 alert JSON file per result, ready for the pipeline to consume.
@@ -8,7 +8,7 @@ Usage:
     alerts = parse_sarif("results.sarif")
 
     from pipeline.sarif import sarif_to_fixtures
-    paths = sarif_to_fixtures("results.sarif", output_dir="fixtures/")
+    paths = sarif_to_fixtures("results.sarif", output_dir="demo/fixtures/")
 """
 
 import json
@@ -188,7 +188,7 @@ def parse_sarif(sarif_path: str) -> list[dict]:
 
 def sarif_to_fixtures(
     sarif_path: str,
-    output_dir: str = "fixtures",
+    output_dir: str = "demo/fixtures",
 ) -> list[str]:
     """Parse a SARIF file and write each result as a fixture JSON file.
 
