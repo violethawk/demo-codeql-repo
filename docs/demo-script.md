@@ -50,17 +50,17 @@ DEVIN_MODE=real DEVIN_API_KEY=your-key python -m sage interactive
 
 ### 3. Policy Design — How Decisions Are Made (15 seconds)
 
-> "How does the system decide what gets auto-fixed versus what gets routed to humans? Routing decisions are anchored to CISA's SSVC framework — exploitation likelihood, impact, and fix confidence — so your security team can audit every triage call. You'll see the three paths in a moment: auto-fix, Devin-assisted fix with security review, and escalate to humans."
+> "How does the system decide what gets auto-fixed versus what gets routed to humans? Routing decisions are anchored to CISA's SSVC framework — exploitation likelihood, impact, and fix confidence — so your security team can audit every triage call. Let's look at how that policy engine actually plays out for an engineer on a Tuesday afternoon."
 
 ---
 
-### 4. Interactive Demo — Three Governance Paths (2.5 minutes)
+### 4. Interactive Demo — Three Governance Paths (3 minutes)
 
 *Open the dashboard. Five vulnerability cards are visible, all red.*
 
 #### Click CWE-89 — SQL Injection (40 seconds)
 
-> "Let me show you the three paths in action. SQL injection first — the fast path."
+> "SQL injection first — the fast path."
 
 *Click the card. Wait for the animation to complete.*
 
@@ -87,6 +87,8 @@ Point out:
 - Notification goes to `#frontend-security` — different team, different channel
 - PR includes remediation plan, root cause analysis, and reviewer notes
 
+> "Notice what the engineer didn't have to do here. They didn't log into SAGE. They didn't look at CodeQL. Devin handed them a standard GitHub PR with the context they need. We're meeting them where they already work."
+>
 > "We have three real Devin-generated PRs merged in this repo — PRs 7, 11, and 12. The banner links to them. Devin analyzed the code, planned the fix, and opened the PRs autonomously."
 
 #### Click CWE-798 — Hardcoded Credentials (30 seconds)
@@ -147,7 +149,7 @@ Highlight two or three:
 
 ### 7. Closing (15 seconds)
 
-> "The bottom line: this isn't AI generating patches. It's a governed remediation system. Every finding is triaged, acted on, tracked, and either resolved or escalated — with an audit trail that proves it. The backlog stops growing, and your next audit looks different."
+> "The bottom line is this: SAGE and Devin let your security team stop acting as a nag, and your engineering team stop treating security as a distraction. You get your compliance, and they get to stay in their flow state. Let's get this connected to a test repo next week and watch the backlog burn down."
 
 ---
 
