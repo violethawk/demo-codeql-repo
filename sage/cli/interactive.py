@@ -316,6 +316,24 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
         try:
             db_conn = init_db()
             report = process_alert(fixture, "demo", db_conn=db_conn)
+
+            # In the demo, advance PR_READY findings to MERGED so KPIs
+            # reflect the completed remediation the user just watched.
+            alert_id = report.get("alert_id", "")
+            if report.get("disposition") == "PR_READY" and alert_id:
+                from datetime import datetime, timezone
+                from sage.pipeline.store import _log_event
+                now = datetime.now(timezone.utc).isoformat()
+                db_conn.execute(
+                    "UPDATE alerts SET lifecycle_state = 'MERGED', updated_at = ? "
+                    "WHERE alert_id = ?",
+                    (now, alert_id),
+                )
+                _log_event(db_conn, alert_id, "state_change",
+                           "UNDER_REVIEW", "MERGED",
+                           "Auto-merged in interactive demo")
+                db_conn.commit()
+
             db_conn.close()
         except Exception as e:
             report = {"disposition": "ERROR", "error": str(e)}
