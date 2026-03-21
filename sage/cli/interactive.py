@@ -461,21 +461,57 @@ HTML = """\
 
         if (!jobId) throw new Error(startData.error || 'No job ID returned');
 
-        addLine('Processing... (polling for completion)', 'line-info');
+        const isDevinPath = (cwe === 'CWE-79' || cwe === 'CWE-78');
+        const devinMode = startData.devin_mode || 'stub';
 
-        // Poll until done
+        if (isDevinPath && devinMode === 'real') {{
+          addLine('[1/9] Ingesting alert...', 'line-header');
+          addLine('  Alert: ' + cwe, 'line-info');
+          addLine('', 'line-info');
+          addLine('[2/9] Policy decision: REMEDIATE_WITH_REVIEW', 'line-header');
+          addLine('  Security reviewer required on PR', 'line-warn');
+          addLine('', 'line-info');
+          addLine('[3/9] Devin remediation session...', 'line-header');
+          addLine('  Creating Devin session via API...', 'line-info');
+        }} else {{
+          addLine('Processing...', 'line-info');
+        }}
+
+        // Poll until done, showing Devin progress
         let data = null;
+        let pollCount = 0;
+        const devinSteps = [
+          'Devin is analyzing the vulnerable code path...',
+          'Devin is identifying the root cause...',
+          'Devin is developing a remediation strategy...',
+          'Devin is implementing the fix...',
+          'Devin is generating test coverage...',
+          'Devin is validating the changes...',
+          'Devin is preparing the pull request...',
+          'Waiting for Devin session to complete...',
+        ];
+
         while (true) {{
           await new Promise(r => setTimeout(r, 2000));
           const pollResp = await fetch('/api/status/' + jobId);
           const pollData = await pollResp.json();
+
           if (pollData.status === 'running') {{
-            // Still working
+            if (isDevinPath && devinMode === 'real') {{
+              const step = devinSteps[Math.min(pollCount, devinSteps.length - 1)];
+              addLine('  ' + step, 'line-info');
+            }}
+            pollCount++;
             continue;
           }} else {{
             data = pollData;
             break;
           }}
+        }}
+
+        if (isDevinPath && devinMode === 'real') {{
+          addLine('  Session complete.', 'line-success');
+          addLine('', 'line-info');
         }}
 
         // Stream output with delay for visual effect
@@ -656,7 +692,7 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
             if not job:
                 self._json_response(404, {"error": "job not found"})
             elif job["status"] == "running":
-                self._json_response(200, {"status": "running", "job_id": job_id})
+                self._json_response(200, {"status": "running", "job_id": job_id, "devin_mode": os.environ.get("DEVIN_MODE", "stub")})
             else:
                 self._json_response(200, job["result"])
             return
@@ -712,7 +748,7 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
             )
             thread.start()
 
-            self._json_response(200, {"status": "running", "job_id": job_id})
+            self._json_response(200, {"status": "running", "job_id": job_id, "devin_mode": os.environ.get("DEVIN_MODE", "stub")})
 
         elif parsed.path == "/api/reset":
             APP_PATH.write_text(APP_ORIGINAL)
