@@ -136,4 +136,4 @@ All metrics are computable from the existing `pipeline.db` schema:
 | SLA breach count | `alerts` where `sla_deadline` < now + non-terminal | Yes |
 | Lifecycle completion | `alerts.lifecycle_state` in (`MERGED`, `ESCALATED`, `CLOSED`) | Yes |
 
-`run_metrics.py` surfaces the core metrics. `run_enforce.py` acts on SLA breaches. The aggregate dashboard visualizes disposition and team breakdowns.
+`sage/cli/metrics.py` surfaces the core metrics. `sage/cli/enforce.py` acts on SLA breaches. The aggregate dashboard visualizes disposition and team breakdowns.

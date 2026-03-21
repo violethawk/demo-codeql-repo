@@ -354,19 +354,19 @@ The submission should demonstrate that you understand:
 
 | Requirement | Status | Module |
 |---|---|---|
-| FR-1: Ingest findings | Implemented | `pipeline/ingest.py`, `pipeline/sarif.py` |
-| FR-2: Normalize schema | Implemented | `pipeline/ingest.py` (Alert dataclass) |
-| FR-3: Policy decision engine | Implemented | `pipeline/policy.py`, `pipeline/triage.py` |
+| FR-1: Ingest findings | Implemented | `sage/pipeline/ingest.py`, `sage/pipeline/sarif.py` |
+| FR-2: Normalize schema | Implemented | `sage/pipeline/ingest.py` (Alert dataclass) |
+| FR-3: Policy decision engine | Implemented | `sage/pipeline/policy.py`, `sage/pipeline/triage.py` |
 | FR-4: Restrict auto-remediation | Implemented | Policy registry with 4 actions |
-| FR-5: Devin execution | Implemented | `integrations/devin_client.py` (stub + real API) |
-| FR-6: Create PR | Implemented | `integrations/pr_client.py` (stub + gh CLI) |
-| FR-7: Route to stakeholders | Implemented | `integrations/pr_client.py` (reviewer assignment + labels), `integrations/notify.py` (team routing) |
-| FR-8: State transitions | Implemented | `pipeline/store.py` (lifecycle states + events), `run_override.py` (validated transitions) |
-| FR-9: Enforcement | Implemented | `pipeline/enforcement.py` (SLA + escalation), `run_enforce.py` (cron-ready runner) |
-| FR-10: Escalation paths | Implemented | `integrations/notify.py` (escalation notifications), `run_enforce.py` (auto-escalate on SLA breach) |
-| FR-11: Audit trail | Implemented | `pipeline/store.py` (events table, enforcement + override logging) |
-| FR-12: Status visibility | Implemented | `integrations/dashboard.py` (single + aggregate) |
+| FR-5: Devin execution | Implemented | `sage/integrations/devin_client.py` (stub + real API) |
+| FR-6: Create PR | Implemented | `sage/integrations/pr_client.py` (stub + gh CLI) |
+| FR-7: Route to stakeholders | Implemented | `sage/integrations/pr_client.py` (reviewer assignment + labels), `sage/integrations/notify.py` (team routing) |
+| FR-8: State transitions | Implemented | `sage/pipeline/store.py` (lifecycle states + events), `sage/cli/override.py` (validated transitions) |
+| FR-9: Enforcement | Implemented | `sage/pipeline/enforcement.py` (SLA + escalation), `sage/cli/enforce.py` (cron-ready runner) |
+| FR-10: Escalation paths | Implemented | `sage/integrations/notify.py` (escalation notifications), `sage/cli/enforce.py` (auto-escalate on SLA breach) |
+| FR-11: Audit trail | Implemented | `sage/pipeline/store.py` (events table, enforcement + override logging) |
+| FR-12: Status visibility | Implemented | `sage/integrations/dashboard.py` (single + aggregate) |
 | NFR-1–3 | Implemented | Policy-bounded, explainable, traceable |
-| NFR-4: Human override | Implemented | `run_override.py` (merge, close, reject, defer, escalate, reopen + transition validation) |
+| NFR-4: Human override | Implemented | `sage/cli/override.py` (merge, close, reject, defer, escalate, reopen + transition validation) |
 | NFR-5–7 | Implemented | Safe failure, low overhead, extensible |
 | GR-1–5 | Implemented | Ownership, separation, evidence |
