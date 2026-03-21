@@ -244,8 +244,19 @@ HTML = """\
 <body>
   <div class="container">
     <div class="header">
-      <h1><span>SAGE</span> Interactive Demo</h1>
-      <div class="sub">Click a vulnerability. Watch the system remediate it.</div>
+      <h1><span>SAGE</span> Security Automation &amp; Governance Engine</h1>
+      <div class="sub">Click a vulnerability. Watch the system decide, execute, route, and record.</div>
+      <div style="margin-top:0.6rem;font-size:0.72rem;color:var(--muted);font-family:monospace;letter-spacing:0.04em">
+        Detection &rarr; <span style="color:var(--cyan)">Decision</span> &rarr;
+        <span style="color:var(--cyan)">Execution</span> &rarr; Review &rarr;
+        <span style="color:var(--cyan)">Enforcement</span> &rarr; Evidence
+      </div>
+    </div>
+
+    <!-- Narration panel -->
+    <div id="narration" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1.25rem;display:none">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--cyan);margin-bottom:0.4rem" id="narration-title"></div>
+      <div style="font-size:0.85rem;line-height:1.6;color:var(--text)" id="narration-body"></div>
     </div>
 
     <div class="vuln-grid">
@@ -366,6 +377,46 @@ HTML = """\
 
     const fixedCode = """ + json.dumps(FIXED_SNIPPETS) + """;
 
+    const narrations = {
+      'start-CWE-89': {
+        title: 'Policy Decision: AUTO_REMEDIATE',
+        body: 'SQL injection has a well-understood fix pattern (parameterized queries). The policy engine assigns AUTO_REMEDIATE with HIGH confidence. This means the local handler applies the fix instantly — no Devin API call, no wait. Standard code review only.'
+      },
+      'start-CWE-79': {
+        title: 'Policy Decision: REMEDIATE_WITH_REVIEW',
+        body: 'XSS fixes depend on the output context (HTML body, attribute, script). The policy engine assigns REMEDIATE_WITH_REVIEW — Devin analyzes the code, produces a remediation plan, implements the fix, and opens a PR. A security reviewer is required before merge.'
+      },
+      'start-CWE-78': {
+        title: 'Policy Decision: REMEDIATE_WITH_REVIEW',
+        body: 'Command injection fixes require understanding the full invocation context. The policy engine routes this to Devin for analysis. Security reviewer required. The fix replaces shell commands with argument-list execution.'
+      },
+      'done-AUTO_REMEDIATE': {
+        title: 'Execution Complete: Local Handler',
+        body: 'The local handler applied a deterministic fix in under a second. The parameterized query pattern is well-understood — no AI analysis needed. The PR is routed to the backend team for standard code review. If no one reviews within 24 hours, the enforcement layer sends a reminder.'
+      },
+      'done-REMEDIATE_WITH_REVIEW': {
+        title: 'Execution Complete: Devin',
+        body: 'Devin analyzed the vulnerability, produced a remediation plan with root cause analysis, implemented the fix, and generated test coverage. The PR requires both an engineering reviewer and a security reviewer before merge. This is the key architectural split: policy decides, Devin executes, humans approve.'
+      },
+      'done-ESCALATED': {
+        title: 'Escalated to Human Review',
+        body: 'The system could not confidently remediate this finding. It has been routed to the owning team and security lead for manual review. The enforcement layer will remind them at 24h and escalate at 48h if no action is taken.'
+      },
+      'routing': {
+        title: 'Review & Routing',
+        body: 'Every fix is routed to the right humans. The notification goes to the team\\'s Slack channel. The PR gets assigned reviewers. If the policy requires security review, a security lead is added. The escalation path ensures nothing stalls — 24h reminder, 48h escalation, SLA breach flagged.'
+      }
+    };
+
+    function narrate(key) {{
+      const n = narrations[key];
+      const el = document.getElementById('narration');
+      if (!n) {{ el.style.display = 'none'; return; }}
+      document.getElementById('narration-title').textContent = n.title;
+      document.getElementById('narration-body').textContent = n.body;
+      el.style.display = 'block';
+    }}
+
     function addLine(text, cls = '') {
       const terminal = document.getElementById('terminal');
       const line = document.createElement('div');
@@ -396,6 +447,7 @@ HTML = """\
       status.className = 'status-text processing-indicator';
 
       clearTerminal();
+      narrate('start-' + cwe);
       addLine('$ sage remediate ' + cwe, 'line-info');
       addLine('');
 
@@ -490,6 +542,18 @@ HTML = """\
           status.textContent = cwe + ' escalated for review';
           status.className = 'status-text';
         }
+
+        // Narrate the result
+        if (data.disposition === 'PR_READY') {{
+          const action = (data.routing && data.routing.action) || 'AUTO_REMEDIATE';
+          narrate('done-' + action);
+        }} else {{
+          narrate('done-ESCALATED');
+        }}
+
+        // Briefly show the governance narration, then show routing
+        await new Promise(r => setTimeout(r, 2000));
+        narrate('routing');
 
         // Populate routing panel
         showRouting(data);
@@ -741,11 +805,57 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def _self_test():
+    """Run a quick CWE-89 remediation to verify the system works."""
+    from pipeline.store import init_db
+    from run_demo import process_alert
+
+    APP_PATH.write_text(APP_ORIGINAL)
+    db_path = Path("pipeline.db")
+    if db_path.exists():
+        db_path.unlink()
+
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        db_conn = init_db()
+        report = process_alert("fixtures/sample_alert.json", "target_repo", db_conn=db_conn, quiet=True)
+        db_conn.close()
+    finally:
+        sys.stdout = old_stdout
+
+    APP_PATH.write_text(APP_ORIGINAL)
+    db_path = Path("pipeline.db")
+    if db_path.exists():
+        db_path.unlink()
+    # Clean artifacts from self-test
+    for f in Path("artifacts").glob("*"):
+        f.unlink()
+
+    if report.get("disposition") == "PR_READY":
+        return True, "CWE-89 → PR_READY"
+    else:
+        return False, f"CWE-89 → {report.get('disposition', 'ERROR')}: {report.get('error', '')}"
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
-    server = http.server.ThreadingHTTPServer(("", port), SAGEHandler)
-    print(f"\n  SAGE Interactive Demo")
+
+    # Self-test before serving
+    print("\n  SAGE Interactive Demo")
+    print("  Running self-test...", end=" ", flush=True)
+    ok, detail = _self_test()
+    if ok:
+        print(f"OK ({detail})")
+    else:
+        print(f"FAILED ({detail})")
+        print("  The demo may not work correctly. Check target_repo/app.py")
+
+    devin_mode = os.environ.get("DEVIN_MODE", "stub")
+    print(f"  Devin mode: {devin_mode}")
     print(f"  Open http://localhost:{port}\n")
+
+    server = http.server.ThreadingHTTPServer(("", port), SAGEHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
