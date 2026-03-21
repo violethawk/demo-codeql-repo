@@ -239,7 +239,7 @@ Covers: ingest, triage, policy, execute (5 CWEs × 4 SQL patterns), validate, st
 
 ## Docs
 
-| | |
+| Document | Description |
 |---|---|
 | [docs/requirements.md](docs/requirements.md) | 12 functional, 7 non-functional, 5 governance requirements |
 | [docs/kpis.md](docs/kpis.md) | 9 KPIs mapped to the system components that drive them |
