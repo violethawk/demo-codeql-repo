@@ -6,9 +6,21 @@ CodeQL flags dozens of new issues every week and they just pile up. Security fil
 python -m sage interactive    # open http://localhost:8000
 ```
 
-Three vulnerable code blocks. Click one. Watch the policy engine decide, the execution layer fix it, and the routing panel show exactly which team, channel, and reviewer gets notified.
+Five vulnerable code blocks. Click one. Watch the policy engine decide, the execution layer fix it, and the routing panel show exactly which team, channel, and reviewer gets notified.
 
-Built as a technical demonstration for MedSecure's security remediation challenge.
+Built for MedSecure's security remediation challenge.
+
+---
+
+## Setup
+
+Python 3.12+ required. No external dependencies — stdlib only.
+
+```bash
+git clone <repo> && cd sage
+python -m sage check          # validate configuration
+python -m sage interactive    # open http://localhost:8000
+```
 
 ---
 
@@ -124,6 +136,16 @@ $ python -m sage metrics
 
 All fall back to stub mode when env vars aren't set. `python -m sage check` validates connectivity.
 
+**Environment variables:**
+
+| Variable | Required for | Default |
+|---|---|---|
+| `DEVIN_MODE` | Devin integration | `stub` |
+| `DEVIN_API_KEY` | Devin API calls | — |
+| `PR_MODE` | GitHub PR creation | `stub` |
+| `NOTIFY_MODE` | Slack notifications | `stub` |
+| `SLACK_WEBHOOK_URL` | Slack delivery | — |
+
 Real Devin sessions create branches in this repo — see `devin/*` branches for proof of live API integration.
 
 <details>
@@ -137,7 +159,7 @@ Real Devin sessions create branches in this repo — see `devin/*` branches for 
                      └──────┬───────┘                               │
                             │                                       ▼
                             │                              ┌─────────────────┐
-                            ├──────────────▶               │ Enforcement Loop│
+                            ├─────────────────────────────▶│ Enforcement Loop│
                             │                              │ Remind /Escalate│
                             ▼                              └────────┬────────┘
                     ┌──────────────┐                                │
@@ -195,7 +217,7 @@ Every transition is timestamped. Invalid transitions are rejected. `python -m sa
 python -m pytest tests/ -v    # 86 tests
 ```
 
-Covers: ingest, triage, policy, execute (3 CWEs × 4 SQL patterns), validate, store, enforcement (SLA + KPI-driven), notifications, escalation routing, dashboard, and human overrides.
+Covers: ingest, triage, policy, execute (5 CWEs × 4 SQL patterns), validate, store, enforcement (SLA + KPI-driven), notifications, escalation routing, dashboard, and human overrides.
 
 ---
 
@@ -205,3 +227,10 @@ Covers: ingest, triage, policy, execute (3 CWEs × 4 SQL patterns), validate, st
 |---|---|
 | [docs/requirements.md](docs/requirements.md) | 12 functional, 7 non-functional, 5 governance requirements |
 | [docs/kpis.md](docs/kpis.md) | 9 KPIs mapped to the system components that drive them |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Adding CWEs, integrations, and running tests |
+
+---
+
+## License
+
+[MIT](LICENSE)
