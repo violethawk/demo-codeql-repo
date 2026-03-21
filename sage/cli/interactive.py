@@ -545,26 +545,27 @@ HTML = """\
           badge.className = 'vuln-badge badge-fixed';
           status.className = 'status-text';
 
-          if (isDevinPath && isDevinReal) {
-            // Devin did the work — show Devin's output, not local code
+          if (isDevinPath && isDevinReal && devin.pr_url) {
+            // Devin produced a PR — show Devin's output
             badge.textContent = 'FIXED BY DEVIN';
-            let devinHtml = '';
-            if (devin.plan) {
-              devinHtml += '<div style="font-size:0.7rem;color:var(--cyan);font-weight:700;margin-bottom:0.3rem">DEVIN REMEDIATION</div>';
-              devinHtml += '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem"><b>Root cause:</b> ' + (devin.plan.root_cause || '').substring(0, 120) + '</div>';
+            let devinHtml = '<div style="font-size:0.7rem;color:var(--cyan);font-weight:700;margin-bottom:0.3rem">DEVIN REMEDIATION</div>';
+            if (devin.plan && devin.plan.root_cause) {
+              devinHtml += '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem"><b>Root cause:</b> ' + devin.plan.root_cause.substring(0, 120) + '</div>';
               devinHtml += '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem"><b>Strategy:</b> ' + (devin.plan.fix_strategy || '').substring(0, 120) + '</div>';
-              devinHtml += '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem"><b>Tests:</b> ' + (devin.plan.test_plan || '').substring(0, 100) + '</div>';
             }
-            if (devin.session_id) {
-              devinHtml += '<div style="font-size:0.72rem;margin-top:0.4rem"><b>Session:</b> <span style="color:var(--cyan)">' + devin.session_id + '</span></div>';
-            }
-            if (devin.pr_url) {
-              devinHtml += '<div style="margin-top:0.3rem"><a href="' + devin.pr_url + '" style="color:var(--cyan);font-weight:700;font-size:0.78rem" target="_blank">View Devin PR &rarr;</a></div>';
-            }
+            devinHtml += '<div style="font-size:0.72rem;margin-top:0.4rem"><b>Session:</b> <span style="color:var(--cyan)">' + devin.session_id + '</span></div>';
+            devinHtml += '<div style="margin-top:0.3rem"><a href="' + devin.pr_url + '" style="color:var(--cyan);font-weight:700;font-size:0.78rem" target="_blank">View Devin PR &rarr;</a></div>';
             code.innerHTML = devinHtml;
             code.className = 'code-block code-fixed';
             code.style.whiteSpace = 'normal';
             status.textContent = cwe + ' remediated by Devin';
+          } else if (isDevinPath && isDevinReal) {
+            // Devin ran but didn't produce PR — local handler fixed it
+            badge.textContent = 'FIXED';
+            code.textContent = fixedCode[cwe].after;
+            code.className = 'code-block code-fixed';
+            code.style.whiteSpace = 'pre';
+            status.textContent = cwe + ' fixed (Devin + local handler)';
           } else {
             // Local handler — show the code transform
             badge.textContent = 'FIXED';

@@ -196,14 +196,15 @@ def _execute_via_devin(
 
     # 4. Report remediation plan
     _print("[4/9] Remediation plan...")
-    if session.plan:
-        _print(f"  Root cause:     {session.plan.root_cause[:80]}...")
-        _print(f"  Fix strategy:   {session.plan.fix_strategy[:80]}...")
+    if session.plan and session.plan.root_cause:
+        _print(f"  Root cause:     {session.plan.root_cause[:100]}")
+        _print(f"  Fix strategy:   {session.plan.fix_strategy[:100]}")
         _print(f"  Affected files: {', '.join(session.plan.affected_files) or 'N/A'}")
-        _print(f"  Test plan:      {session.plan.test_plan[:80]}...")
+        if session.plan.test_plan:
+            _print(f"  Test plan:      {session.plan.test_plan[:100]}")
         _print(f"  Confidence:     {session.plan.confidence}")
     else:
-        _print("  No structured plan returned")
+        _print("  Devin session created — structured output pending")
     _print()
 
     # 5. Apply fix + validate
