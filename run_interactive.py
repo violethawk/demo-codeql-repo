@@ -251,7 +251,7 @@ HTML = """\
         </div>
         <div class="vuln-name">SQL Injection</div>
         <div class="code-block code-vuln" id="code-CWE-89">""" + FIXED_SNIPPETS["CWE-89"]["before"] + """</div>
-        <div class="vuln-action">AUTO_REMEDIATE &mdash; local handler (fast path)</div>
+        <div class="vuln-action">AUTO_REMEDIATE &mdash; local handler (~1s)</div>
       </div>
 
       <div class="vuln-card" id="card-CWE-79" onclick="remediate('CWE-79')">
@@ -261,7 +261,7 @@ HTML = """\
         </div>
         <div class="vuln-name">Cross-Site Scripting</div>
         <div class="code-block code-vuln" id="code-CWE-79">""" + FIXED_SNIPPETS["CWE-79"]["before"] + """</div>
-        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin execution engine</div>
+        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin API (~2-5 min)</div>
       </div>
 
       <div class="vuln-card" id="card-CWE-78" onclick="remediate('CWE-78')">
@@ -271,7 +271,7 @@ HTML = """\
         </div>
         <div class="vuln-name">Command Injection</div>
         <div class="code-block code-vuln" id="code-CWE-78">""" + FIXED_SNIPPETS["CWE-78"]["before"] + """</div>
-        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin execution engine</div>
+        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin API (~2-5 min)</div>
       </div>
     </div>
 
