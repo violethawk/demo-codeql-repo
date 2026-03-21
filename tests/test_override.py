@@ -2,8 +2,8 @@
 
 from datetime import datetime, timezone
 
-from pipeline import store
-from pipeline.ingest import Alert, LineRange
+from sage.pipeline import store
+from sage.pipeline.ingest import Alert, LineRange
 
 
 def _make_alert(**overrides) -> Alert:

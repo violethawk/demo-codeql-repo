@@ -9,7 +9,7 @@ Computes and displays every metric defined in docs/KPIS.md:
 
 import sys
 
-from pipeline import store
+from sage.pipeline import store
 
 
 SEPARATOR = "-" * 62

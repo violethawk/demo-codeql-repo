@@ -1,7 +1,7 @@
 """Tests for the notification layer."""
 
-from pipeline.ingest import Alert, LineRange
-from integrations.notify import build_notification
+from sage.pipeline.ingest import Alert, LineRange
+from sage.integrations.notify import build_notification
 
 
 def _make_alert(**overrides) -> Alert:

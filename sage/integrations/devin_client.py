@@ -30,7 +30,7 @@ import urllib.error
 from dataclasses import dataclass, field
 from typing import Optional
 
-from pipeline.ingest import Alert
+from sage.pipeline.ingest import Alert
 
 # ---------------------------------------------------------------------------
 # Configuration

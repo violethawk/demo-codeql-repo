@@ -2,16 +2,16 @@
 
 from datetime import datetime, timedelta, timezone
 
-from pipeline import store
-from pipeline.ingest import Alert, LineRange
-from pipeline.triage import triage, TriageResult
-from pipeline.execute import ExecutionResult
-from pipeline.output import build_report
-from pipeline.enforcement import (
+from sage.pipeline import store
+from sage.pipeline.ingest import Alert, LineRange
+from sage.pipeline.triage import triage, TriageResult
+from sage.pipeline.execute import ExecutionResult
+from sage.pipeline.output import build_report
+from sage.pipeline.enforcement import (
     check_kpi_enforcement, apply_kpi_enforcement,
     KPIViolation, UNDER_REVIEW, ESCALATED,
 )
-from integrations.notify import (
+from sage.integrations.notify import (
     build_notification, build_escalation_notification, deliver_notification,
 )
 
@@ -172,7 +172,7 @@ def test_report_execution_failed():
 
 def test_report_validation_failed():
     """Report with failed validation produces NEEDS_HUMAN_REVIEW."""
-    from pipeline.validate import ValidationResult, ValidationStep
+    from sage.pipeline.validate import ValidationResult, ValidationStep
 
     alert = _make_alert()
     triage_result = TriageResult(
@@ -193,7 +193,7 @@ def test_report_validation_failed():
 
 def test_report_all_passed():
     """Report with all checks passed produces PR_READY."""
-    from pipeline.validate import ValidationResult, ValidationStep
+    from sage.pipeline.validate import ValidationResult, ValidationStep
 
     alert = _make_alert()
     triage_result = TriageResult(
@@ -267,7 +267,7 @@ def test_validate_without_ruff(tmp_path):
     f = tmp_path / "ok.py"
     f.write_text("x = 1\n")
 
-    from pipeline.validate import validate
+    from sage.pipeline.validate import validate
     result = validate(str(f))
     assert result.passed is True
     # Should have at least py_compile step

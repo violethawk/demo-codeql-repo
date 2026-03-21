@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
-from pipeline.ingest import Alert
+from sage.pipeline.ingest import Alert
 
 
 @dataclass

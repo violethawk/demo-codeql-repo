@@ -5,7 +5,7 @@ Two dashboard modes:
     generate_aggregate_dashboard() -- multi-alert view from SQLite database
 
 Usage:
-    from integrations.dashboard import generate_dashboard, generate_aggregate_dashboard
+    from sage.integrations.dashboard import generate_dashboard, generate_aggregate_dashboard
     generate_dashboard()
     generate_aggregate_dashboard(db_conn)
 """
@@ -235,7 +235,7 @@ def generate_aggregate_dashboard(
     output_path: str = AGGREGATE_FILE,
 ) -> str:
     """Generate an aggregate HTML dashboard from the alert tracking database."""
-    from pipeline.store import get_metrics, get_kpis, list_alerts
+    from sage.pipeline.store import get_metrics, get_kpis, list_alerts
 
     metrics = get_metrics(db_conn)
     kpis = get_kpis(db_conn)

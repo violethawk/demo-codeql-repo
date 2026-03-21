@@ -1,7 +1,7 @@
 """Tests for the persistence layer."""
 
-from pipeline.ingest import Alert, LineRange
-from pipeline import store
+from sage.pipeline.ingest import Alert, LineRange
+from sage.pipeline import store
 
 
 def _make_alert(**overrides) -> Alert:

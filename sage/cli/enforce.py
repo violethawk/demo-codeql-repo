@@ -19,13 +19,13 @@ import argparse
 import sys
 from datetime import datetime, timezone
 
-from pipeline import store
-from pipeline.enforcement import (
+from sage.pipeline import store
+from sage.pipeline.enforcement import (
     check_all_enforcement,
     check_kpi_enforcement,
     apply_kpi_enforcement,
 )
-from integrations.notify import (
+from sage.integrations.notify import (
     build_escalation_notification,
     deliver_notification,
     NotificationPayload,

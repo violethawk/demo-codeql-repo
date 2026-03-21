@@ -1,7 +1,7 @@
 """Tests for the execute layer."""
 
-from pipeline.execute import execute
-from pipeline.ingest import Alert, LineRange
+from sage.pipeline.execute import execute
+from sage.pipeline.ingest import Alert, LineRange
 
 
 def _make_alert(**overrides) -> Alert:

@@ -15,9 +15,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from pipeline import store
-from pipeline.sarif import parse_sarif, sarif_to_fixtures
-from run_demo import process_alert
+from sage.pipeline import store
+from sage.pipeline.sarif import parse_sarif, sarif_to_fixtures
+from sage.cli.demo import process_alert
 
 
 def main() -> int:
@@ -80,7 +80,7 @@ def main() -> int:
         results.append(report)
 
     # Generate aggregate dashboard
-    from integrations.dashboard import generate_aggregate_dashboard
+    from sage.integrations.dashboard import generate_aggregate_dashboard
     agg_path = generate_aggregate_dashboard(db_conn)
     print(f"\n  Aggregate dashboard: {agg_path}")
 

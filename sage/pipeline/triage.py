@@ -7,8 +7,8 @@ four actions: AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE, DEFER.
 from dataclasses import dataclass
 from typing import List
 
-from pipeline.ingest import Alert
-from pipeline.policy import (
+from sage.pipeline.ingest import Alert
+from sage.pipeline.policy import (
     AUTO_REMEDIATE,
     DEFER,
     ESCALATE,

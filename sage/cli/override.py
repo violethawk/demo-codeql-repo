@@ -18,8 +18,8 @@ import argparse
 import sys
 from datetime import datetime, timezone
 
-from pipeline import store
-from pipeline.enforcement import (
+from sage.pipeline import store
+from sage.pipeline.enforcement import (
     MERGED, CLOSED, DEFERRED, ESCALATED, UNDER_REVIEW, DETECTED,
 )
 

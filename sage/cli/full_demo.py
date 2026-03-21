@@ -170,8 +170,8 @@ def phase_4_system_state() -> None:
     # Generate the aggregate dashboard from DB
     run(
         'python -c "'
-        "from pipeline.store import init_db; "
-        "from integrations.dashboard import generate_aggregate_dashboard; "
+        "from sage.pipeline.store import init_db; "
+        "from sage.integrations.dashboard import generate_aggregate_dashboard; "
         "conn = init_db(); "
         "p = generate_aggregate_dashboard(conn); "
         "conn.close(); "

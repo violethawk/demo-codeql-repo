@@ -130,7 +130,7 @@ def main() -> int:
 
     # 5. Database
     try:
-        from pipeline.store import init_db
+        from sage.pipeline.store import init_db
         conn = init_db()
         count = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
         journal = conn.execute("PRAGMA journal_mode").fetchone()[0]
@@ -141,19 +141,19 @@ def main() -> int:
 
     # 6. Module imports
     try:
-        import pipeline.ingest
-        import pipeline.triage
-        import pipeline.policy
-        import pipeline.execute
-        import pipeline.validate
-        import pipeline.enforcement
-        import pipeline.sarif
-        import pipeline.store
-        import pipeline.output
-        import integrations.devin_client
-        import integrations.pr_client
-        import integrations.notify
-        import integrations.dashboard
+        import sage.pipeline.ingest
+        import sage.pipeline.triage
+        import sage.pipeline.policy
+        import sage.pipeline.execute
+        import sage.pipeline.validate
+        import sage.pipeline.enforcement
+        import sage.pipeline.sarif
+        import sage.pipeline.store
+        import sage.pipeline.output
+        import sage.integrations.devin_client
+        import sage.integrations.pr_client
+        import sage.integrations.notify
+        import sage.integrations.dashboard
         check("Pipeline modules", True, "all 13 modules import cleanly")
     except ImportError as e:
         check("Pipeline modules", False, str(e))

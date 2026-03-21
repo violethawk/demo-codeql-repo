@@ -7,13 +7,13 @@
 ## Setup
 
 ```bash
-python run_interactive.py
+python -m sage interactive
 # Open http://localhost:8000
 ```
 
 If using real Devin:
 ```bash
-DEVIN_MODE=real DEVIN_API_KEY=your-key python run_interactive.py
+DEVIN_MODE=real DEVIN_API_KEY=your-key python -m sage interactive
 ```
 
 ---
@@ -63,9 +63,9 @@ Point out:
 ## If you have more time
 
 - Click Reset, then process all three to show batch behavior
-- Run `python run_metrics.py` to show the 9 KPIs
-- Run `python run_enforce.py --dry-run` to show enforcement detecting KPI violations
-- Run `python run_override.py demo-001 status` to show the audit trail
+- Run `python -m sage metrics` to show the 9 KPIs
+- Run `python -m sage enforce --dry-run` to show enforcement detecting KPI violations
+- Run `python -m sage override demo-001 status` to show the audit trail
 - Open `artifacts/dashboard_all.html` to show the aggregate governance dashboard
 
 ---

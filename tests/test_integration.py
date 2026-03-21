@@ -3,9 +3,9 @@
 import json
 from pathlib import Path
 
-from pipeline import store
-from pipeline.ingest import Alert, LineRange
-from pipeline.enforcement import check_kpi_enforcement, apply_kpi_enforcement
+from sage.pipeline import store
+from sage.pipeline.ingest import Alert, LineRange
+from sage.pipeline.enforcement import check_kpi_enforcement, apply_kpi_enforcement
 
 
 def _write_fixture(tmp_path, alert_id, cwe, lines, snippet):
@@ -53,7 +53,7 @@ def search():
     )
 
     # Run pipeline
-    from run_demo import process_alert
+    from sage.cli.demo import process_alert
 
     db_conn = store.init_db(str(tmp_path / "test.db"))
     report = process_alert(
@@ -100,7 +100,7 @@ def search_page():
          "return f'<h1>Results for {user_input}</h1>'"],
     )
 
-    from run_demo import process_alert
+    from sage.cli.demo import process_alert
 
     db_conn = store.init_db(str(tmp_path / "test.db"))
     report = process_alert(
@@ -126,7 +126,7 @@ def test_full_pipeline_escalate(tmp_path):
         ["password = 'hardcoded123'"],
     )
 
-    from run_demo import process_alert
+    from sage.cli.demo import process_alert
 
     db_conn = store.init_db(str(tmp_path / "test.db"))
     report = process_alert(
@@ -200,7 +200,7 @@ def search():
         ["query = f\"...\"", "cursor.execute(query)"],
     )
 
-    from run_demo import process_alert
+    from sage.cli.demo import process_alert
     from datetime import datetime, timezone
 
     db_conn = store.init_db(str(tmp_path / "test.db"))

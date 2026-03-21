@@ -15,8 +15,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List
 
-from pipeline.execute import ExecutionResult
-from pipeline.ingest import Alert
+from sage.pipeline.execute import ExecutionResult
+from sage.pipeline.ingest import Alert
 
 
 # ---------------------------------------------------------------------------

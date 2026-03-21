@@ -1,6 +1,6 @@
 """Tests for the policy layer."""
 
-from pipeline.policy import (
+from sage.pipeline.policy import (
     AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE,
     get_policy,
 )

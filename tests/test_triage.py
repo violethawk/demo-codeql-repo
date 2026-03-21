@@ -1,8 +1,8 @@
 """Tests for the triage layer."""
 
-from pipeline.ingest import Alert, LineRange
-from pipeline.policy import AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE
-from pipeline.triage import triage
+from sage.pipeline.ingest import Alert, LineRange
+from sage.pipeline.policy import AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE
+from sage.pipeline.triage import triage
 
 
 def _make_alert(**overrides) -> Alert:

@@ -1,6 +1,6 @@
 """Tests for the validate layer."""
 
-from pipeline.validate import validate
+from sage.pipeline.validate import validate
 
 
 def test_valid_python_passes(tmp_path):

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from pipeline.ingest import load_alert
+from sage.pipeline.ingest import load_alert
 
 
 def test_load_valid_alert(tmp_path):

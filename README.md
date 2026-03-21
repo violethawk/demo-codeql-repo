@@ -3,7 +3,7 @@
 CodeQL flags dozens of new issues every week and they just pile up. Security files them, engineering ignores them, auditors flag the backlog. SAGE makes that operationally impossible.
 
 ```bash
-python sage.py interactive    # open http://localhost:8000
+python -m sage interactive    # open http://localhost:8000
 ```
 
 Three vulnerable code blocks. Click one. Watch the policy engine decide, the execution layer fix it, and the routing panel show exactly which team, channel, and reviewer gets notified.
@@ -39,26 +39,26 @@ The local handler is the fast path for well-understood patterns. Devin is the ex
 
 **Interactive** (recommended):
 ```bash
-python sage.py interactive
+python -m sage interactive
 ```
 
 **Full lifecycle** (5 phases — ingest, enforce, override, metrics, dashboard):
 ```bash
-python sage.py full-demo
+python -m sage full-demo
 ```
 
 <details>
 <summary><strong>All commands</strong></summary>
 
 ```bash
-python sage.py demo                              # single alert
-python sage.py batch demo/fixtures/              # batch processing
-python sage.py sarif demo/fixtures/sample_scan.sarif  # SARIF input
-python sage.py metrics                           # all 9 KPIs
-python sage.py enforce                           # SLA + KPI enforcement
-python sage.py override demo-001 merge           # human override
-python sage.py override demo-001 status          # audit trail
-python sage.py check                             # validate deployment
+python -m sage demo                              # single alert
+python -m sage batch demo/fixtures/              # batch processing
+python -m sage sarif demo/fixtures/sample_scan.sarif  # SARIF input
+python -m sage metrics                           # all 9 KPIs
+python -m sage enforce                           # SLA + KPI enforcement
+python -m sage override demo-001 merge           # human override
+python -m sage override demo-001 status          # audit trail
+python -m sage check                             # validate deployment
 ```
 
 </details>
@@ -69,7 +69,7 @@ python sage.py check                             # validate deployment
 
 Two layers, both with teeth.
 
-**Per-finding SLA** — `run_enforce.py` on hourly cron:
+**Per-finding SLA** — `python -m sage enforce` on hourly cron:
 
 | Condition | Action |
 |---|---|
@@ -93,7 +93,7 @@ KPIs aren't a dashboard. They drive system behavior. Thresholds configured in `s
 ## KPIs
 
 ```
-$ python run_metrics.py
+$ python -m sage metrics
 
   OUTCOME METRICS
   SLA Compliance Rate:       33% (1/3 high-risk resolved within SLA)
@@ -122,7 +122,7 @@ $ python run_metrics.py
 | GitHub | `PR_MODE=github` | Branch → commit → push → PR with reviewers + labels via `gh` |
 | Slack | `NOTIFY_MODE=slack` + `SLACK_WEBHOOK_URL` | Block Kit messages to team channels + escalation channels |
 
-All fall back to stub mode when env vars aren't set. `python run_check.py` validates connectivity.
+All fall back to stub mode when env vars aren't set. `python -m sage check` validates connectivity.
 
 Real Devin sessions create branches in this repo — see `devin/*` branches for proof of live API integration.
 
@@ -136,10 +136,10 @@ Real Devin sessions create branches in this repo — see `devin/*` branches for 
    └──────────┘      │ Confidence   │      └──────────┘      └─────────────┘
                      └──────┬───────┘                               │
                             │                                       ▼
-                            │                              ┌─────────────────-┐
-                            ├──────────────▶               │ Enforcement Loop │
+                            │                              ┌─────────────────┐
+                            ├──────────────▶               │ Enforcement Loop│
                             │                              │ Remind / Escalate│
-                            ▼                              └────────-┬────────┘
+                            ▼                              └────────┬────────┘
                     ┌──────────────┐                                 │
                     │ Escalation   │ ◀───────────────────────────────┘
                     │ Security / EM│
@@ -153,13 +153,13 @@ Real Devin sessions create branches in this repo — see `devin/*` branches for 
 
 | Layer | Module |
 |---|---|
-| Detection | `pipeline/ingest.py`, `pipeline/sarif.py` |
-| Decision | `pipeline/policy.py`, `pipeline/triage.py` |
-| Execution | `integrations/devin_client.py`, `pipeline/execute.py` |
-| Review | `integrations/pr_client.py`, `integrations/notify.py` |
-| Enforcement | `pipeline/enforcement.py`, `run_enforce.py` |
-| Evidence | `pipeline/store.py`, `pipeline/output.py` |
-| Override | `run_override.py` |
+| Detection | `sage/pipeline/ingest.py`, `sage/pipeline/sarif.py` |
+| Decision | `sage/pipeline/policy.py`, `sage/pipeline/triage.py` |
+| Execution | `sage/integrations/devin_client.py`, `sage/pipeline/execute.py` |
+| Review | `sage/integrations/pr_client.py`, `sage/integrations/notify.py` |
+| Enforcement | `sage/pipeline/enforcement.py`, `sage/cli/enforce.py` |
+| Evidence | `sage/pipeline/store.py`, `sage/pipeline/output.py` |
+| Override | `sage/cli/override.py` |
 
 **Policy table:**
 
@@ -179,7 +179,7 @@ DETECTED → TRIAGED → REMEDIATED → UNDER_REVIEW → MERGED → CLOSED
                    ↘ DEFERRED (low-risk)
 ```
 
-Every transition is timestamped. Invalid transitions are rejected. `run_override.py` provides human merge/reject/defer/escalate/reopen.
+Every transition is timestamped. Invalid transitions are rejected. `python -m sage override` provides human merge/reject/defer/escalate/reopen.
 
 **CI/CD** — `.github/workflows/sage.yml`:
 - Triggers on CodeQL completion, hourly cron, or manual dispatch

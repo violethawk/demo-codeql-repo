@@ -1,6 +1,6 @@
 """Tests for escalation notifications."""
 
-from integrations.notify import build_escalation_notification
+from sage.integrations.notify import build_escalation_notification
 
 
 def test_remind_owner_goes_to_team_channel():

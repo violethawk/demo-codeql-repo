@@ -4,10 +4,10 @@ CodeQL produces SARIF 2.1.0 JSON. This module parses it and emits one
 alert JSON file per result, ready for the pipeline to consume.
 
 Usage:
-    from pipeline.sarif import parse_sarif
+    from sage.pipeline.sarif import parse_sarif
     alerts = parse_sarif("results.sarif")
 
-    from pipeline.sarif import sarif_to_fixtures
+    from sage.pipeline.sarif import sarif_to_fixtures
     paths = sarif_to_fixtures("results.sarif", output_dir="demo/fixtures/")
 """
 

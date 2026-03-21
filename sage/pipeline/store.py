@@ -8,7 +8,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
-from pipeline.ingest import Alert
+from sage.pipeline.ingest import Alert
 
 DEFAULT_DB_PATH = "pipeline.db"
 
@@ -99,7 +99,7 @@ def record_alert(
         lifecycle_state = "DETECTED"
 
     # Compute SLA deadline
-    from pipeline.enforcement import compute_sla_deadline
+    from sage.pipeline.enforcement import compute_sla_deadline
     sla_deadline = compute_sla_deadline(now, sla_hours)
 
     # Check if this is an update

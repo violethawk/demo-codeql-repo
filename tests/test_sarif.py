@@ -2,7 +2,7 @@
 
 import json
 
-from pipeline.sarif import parse_sarif, sarif_to_fixtures
+from sage.pipeline.sarif import parse_sarif, sarif_to_fixtures
 
 
 def _minimal_sarif(results=None, rules=None):

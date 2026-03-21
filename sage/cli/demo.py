@@ -12,22 +12,22 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pipeline.ingest import Alert, load_alert
-from pipeline.triage import triage
-from pipeline.policy import AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE, DEFER
-from pipeline.execute import execute, ExecutionResult
-from pipeline.validate import validate
-from pipeline.output import generate_report
-from pipeline import store
+from sage.pipeline.ingest import Alert, load_alert
+from sage.pipeline.triage import triage
+from sage.pipeline.policy import AUTO_REMEDIATE, REMEDIATE_WITH_REVIEW, ESCALATE, DEFER
+from sage.pipeline.execute import execute, ExecutionResult
+from sage.pipeline.validate import validate
+from sage.pipeline.output import generate_report
+from sage.pipeline import store
 
-from integrations.devin_client import (
+from sage.integrations.devin_client import (
     create_session, remediate as devin_remediate,
     build_prompt, _get_mode, DevinSession,
     _create_session_stub,
 )
-from integrations.pr_client import build_pr_payload, deliver_pr
-from integrations.notify import build_notification, deliver_notification
-from integrations.dashboard import generate_dashboard
+from sage.integrations.pr_client import build_pr_payload, deliver_pr
+from sage.integrations.notify import build_notification, deliver_notification
+from sage.integrations.dashboard import generate_dashboard
 
 
 SEPARATOR = "-" * 56
@@ -213,7 +213,7 @@ def _execute_via_devin(
     val_result = None
     if mode == "stub":
         # Stub mode: run local handler to demonstrate the actual code change
-        from pipeline.execute import execute as _local_execute
+        from sage.pipeline.execute import execute as _local_execute
         exec_result = _local_execute(alert, repo_root)
         if exec_result.success:
             val_result = validate(target_file)

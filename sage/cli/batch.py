@@ -11,9 +11,9 @@ import glob
 import sys
 from pathlib import Path
 
-from pipeline import store
-from pipeline.ingest import load_alert
-from run_demo import process_alert
+from sage.pipeline import store
+from sage.pipeline.ingest import load_alert
+from sage.cli.demo import process_alert
 
 
 SEPARATOR = "-" * 56
@@ -120,7 +120,7 @@ def main() -> int:
     print(f"  Remediation rate: {rate:.0%} ({metrics['by_disposition'].get('PR_READY', 0)}/{total})")
 
     # Generate aggregate dashboard
-    from integrations.dashboard import generate_aggregate_dashboard
+    from sage.integrations.dashboard import generate_aggregate_dashboard
     agg_path = generate_aggregate_dashboard(db_conn)
     print(f"  Aggregate dashboard: {agg_path}")
     print(SEPARATOR)

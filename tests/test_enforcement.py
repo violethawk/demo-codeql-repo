@@ -2,13 +2,13 @@
 
 from datetime import datetime, timedelta, timezone
 
-from pipeline.enforcement import (
+from sage.pipeline.enforcement import (
     check_enforcement, compute_sla_deadline,
     check_kpi_enforcement, apply_kpi_enforcement,
     UNDER_REVIEW, MERGED, CLOSED,
 )
-from pipeline import store
-from pipeline.ingest import Alert, LineRange
+from sage.pipeline import store
+from sage.pipeline.ingest import Alert, LineRange
 
 
 def test_compute_sla_deadline():

@@ -110,7 +110,7 @@ def check_enforcement(
 
 def check_all_enforcement(db_conn) -> list[EnforcementCheck]:
     """Check enforcement rules for all non-terminal alerts in the database."""
-    from pipeline.store import list_alerts
+    from sage.pipeline.store import list_alerts
 
     results: list[EnforcementCheck] = []
     alerts = list_alerts(db_conn)
@@ -167,7 +167,7 @@ def check_kpi_enforcement(db_conn) -> list[KPIViolation]:
     This is what makes KPIs load-bearing: when a metric degrades past
     its threshold, the system takes action — not just reports.
     """
-    from pipeline.store import get_kpis
+    from sage.pipeline.store import get_kpis
 
     kpis = get_kpis(db_conn)
     thresholds = _load_kpi_thresholds()
@@ -256,7 +256,7 @@ def apply_kpi_enforcement(db_conn, violations: list[KPIViolation]) -> list[str]:
 
     Returns a list of actions taken (for logging/display).
     """
-    from pipeline.store import _log_event, list_alerts
+    from sage.pipeline.store import _log_event, list_alerts
 
     thresholds = _load_kpi_thresholds()
     actions_taken: list[str] = []

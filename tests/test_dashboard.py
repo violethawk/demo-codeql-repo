@@ -1,8 +1,8 @@
 """Tests for the dashboard generator."""
 
-from pipeline import store
-from pipeline.ingest import Alert, LineRange
-from integrations.dashboard import generate_aggregate_dashboard
+from sage.pipeline import store
+from sage.pipeline.ingest import Alert, LineRange
+from sage.integrations.dashboard import generate_aggregate_dashboard
 
 
 def _make_alert(**overrides) -> Alert:

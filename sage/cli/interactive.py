@@ -728,8 +728,8 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
     @staticmethod
     def _run_remediation(job_id: str, cwe: str, fixture: str):
         """Run the pipeline in a background thread."""
-        from pipeline.store import init_db
-        from run_demo import process_alert
+        from sage.pipeline.store import init_db
+        from sage.cli.demo import process_alert
 
         old_stdout = sys.stdout
         sys.stdout = captured = io.StringIO()
@@ -805,8 +805,8 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
 
 def _self_test():
     """Run a quick CWE-89 remediation to verify the system works."""
-    from pipeline.store import init_db
-    from run_demo import process_alert
+    from sage.pipeline.store import init_db
+    from sage.cli.demo import process_alert
 
     APP_PATH.write_text(APP_ORIGINAL)
     db_path = Path("pipeline.db")
