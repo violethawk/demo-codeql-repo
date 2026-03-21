@@ -230,7 +230,7 @@ All integrations have been tested live — see [PRs #7, #11, #12](../../pulls) f
 | Evidence | `sage/pipeline/store.py`, `sage/pipeline/output.py` |
 | Override | `sage/cli/override.py` |
 
-**Policy table:**
+**Policy table** — routing decisions follow CISA's [SSVC framework](https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc), extended with a fix-confidence axis. See [`sage/pipeline/policy.py`](sage/pipeline/policy.py) for the full methodology.
 
 | CWE | Name | Action | Confidence | SLA |
 |---|---|---|---|---|
