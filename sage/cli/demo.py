@@ -206,28 +206,18 @@ def _execute_via_devin(
         _print("  No structured plan returned")
     _print()
 
-    # 5. Validate the fix
-    _print("[5/9] Validating fix...")
+    # 5. Apply fix + validate
+    _print("[5/9] Applying fix...")
     target_file = str(Path(repo_root) / alert.file_path)
     exec_result = None
     val_result = None
-    if mode == "stub":
-        # Stub mode: run local handler to demonstrate the actual code change
-        from sage.pipeline.execute import execute as _local_execute
-        exec_result = _local_execute(alert, repo_root)
-        if exec_result.success:
-            val_result = validate(target_file)
-            for step in val_result.steps:
-                _print(f"  {step.command} -> {step.result}")
-        else:
-            _print(f"  (stub mode: local handler unavailable, Devin would handle)")
-    else:
-        # Real mode: Devin handled the fix remotely. Build an ExecutionResult
-        # from Devin's plan so the audit record has consistent fields.
-        _print("  Devin validated remotely")
+
+    if mode == "real" and session.disposition == "PR_READY" and session.pr_url:
+        # Devin produced a PR — use its output
+        _print("  Devin applied fix remotely")
         if session.plan:
             exec_result = ExecutionResult(
-                success=session.disposition == "PR_READY",
+                success=True,
                 files_changed=session.plan.affected_files,
                 summary=session.plan.fix_strategy,
                 root_cause=session.plan.root_cause,
@@ -235,6 +225,22 @@ def _execute_via_devin(
                 why_fix_works=f"Devin session {session.session_id}: {session.plan.confidence} confidence",
                 residual_risk="See Devin session insights for details.",
             )
+    else:
+        # Devin didn't produce a PR (or stub mode) — fall back to local handler
+        if mode == "real":
+            _print(f"  Devin session {session.session_id} did not produce a PR")
+            _print("  Falling back to local handler...")
+        from sage.pipeline.execute import execute as _local_execute
+        exec_result = _local_execute(alert, repo_root)
+        if exec_result.success:
+            val_result = validate(target_file)
+            for step in val_result.steps:
+                _print(f"  {step.command} -> {step.result}")
+            # Override session disposition since local fix succeeded
+            session.disposition = "PR_READY"
+            session.confidence = "MEDIUM"
+        else:
+            _print(f"  Local handler failed: {exec_result.error}")
     _print()
 
     # 6. Session result
