@@ -45,9 +45,15 @@ CREATE TABLE IF NOT EXISTS events (
 
 
 def init_db(db_path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    """Open (or create) the SAGE alert tracking database."""
-    conn = sqlite3.connect(db_path)
+    """Open (or create) the SAGE alert tracking database.
+
+    Uses WAL journal mode for safe concurrent reads (e.g., multiple
+    CI runners or enforcement cron alongside the pipeline).
+    """
+    conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.execute(_CREATE_ALERTS)
     conn.execute(_CREATE_EVENTS)
     conn.commit()
@@ -223,4 +229,173 @@ def get_metrics(conn: sqlite3.Connection) -> dict:
         "by_team": by_team,
         "by_action": by_action,
         "by_lifecycle": by_lifecycle,
+    }
+
+
+def get_kpis(conn: sqlite3.Connection) -> dict:
+    """Compute all SAGE KPIs from the database.
+
+    Returns a dict with every KPI from docs/KPIS.md.
+    """
+    now = datetime.now(timezone.utc)
+    total = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+
+    if total == 0:
+        return {
+            "sla_compliance_rate": 0.0,
+            "sla_compliant": 0,
+            "sla_total": 0,
+            "mttr_hours": 0.0,
+            "aging_backlog": {"within_sla": 0, "at_risk": 0, "breached": 0},
+            "auto_remediation_rate": 0.0,
+            "auto_remediated": 0,
+            "pr_merge_rate": 0.0,
+            "merged": 0,
+            "total_prs": 0,
+            "time_to_first_action_hours": 0.0,
+            "unowned_findings": 0,
+            "sla_breach_count": 0,
+            "lifecycle_completion_rate": 0.0,
+            "lifecycle_completed": 0,
+            "total": 0,
+        }
+
+    # --- 2.1 SLA Compliance Rate ---
+    # Resolved within SLA: terminal state AND updated_at <= sla_deadline
+    sla_compliant = conn.execute(
+        """SELECT COUNT(*) FROM alerts
+           WHERE lifecycle_state IN ('MERGED', 'CLOSED')
+           AND updated_at <= sla_deadline""",
+    ).fetchone()[0]
+    sla_total_high = conn.execute(
+        "SELECT COUNT(*) FROM alerts WHERE severity IN ('high', 'critical')",
+    ).fetchone()[0]
+    sla_compliance = round(sla_compliant / sla_total_high, 2) if sla_total_high else 0.0
+
+    # --- 2.2 MTTR (Mean Time to Remediation) ---
+    # Average hours from created_at to the first terminal-state event
+    mttr_rows = conn.execute(
+        """SELECT a.alert_id,
+                  a.created_at,
+                  MIN(e.timestamp) as resolved_at
+           FROM alerts a
+           JOIN events e ON a.alert_id = e.alert_id
+           WHERE e.new_state IN ('MERGED', 'CLOSED', 'UNDER_REVIEW')
+           GROUP BY a.alert_id""",
+    ).fetchall()
+    mttr_hours_list = []
+    for row in mttr_rows:
+        try:
+            created = datetime.fromisoformat(row["created_at"])
+            resolved = datetime.fromisoformat(row["resolved_at"])
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            if resolved.tzinfo is None:
+                resolved = resolved.replace(tzinfo=timezone.utc)
+            mttr_hours_list.append((resolved - created).total_seconds() / 3600)
+        except (ValueError, TypeError):
+            pass
+    mttr = round(sum(mttr_hours_list) / len(mttr_hours_list), 2) if mttr_hours_list else 0.0
+
+    # --- 2.3 Aging High-Risk Backlog ---
+    open_alerts = conn.execute(
+        """SELECT created_at, sla_hours FROM alerts
+           WHERE lifecycle_state NOT IN ('MERGED', 'CLOSED', 'DEFERRED')
+           AND severity IN ('high', 'critical')""",
+    ).fetchall()
+    aging = {"within_sla": 0, "at_risk": 0, "breached": 0}
+    for row in open_alerts:
+        try:
+            created = datetime.fromisoformat(row["created_at"])
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            hours = (now - created).total_seconds() / 3600
+            if hours > 72:
+                aging["breached"] += 1
+            elif hours > 24:
+                aging["at_risk"] += 1
+            else:
+                aging["within_sla"] += 1
+        except (ValueError, TypeError):
+            pass
+
+    # --- 3.1 Auto-Remediation Rate ---
+    # Based on policy action (what the system decided), not post-enforcement state
+    auto_rem = conn.execute(
+        """SELECT COUNT(*) FROM alerts
+           WHERE policy_action IN ('AUTO_REMEDIATE', 'REMEDIATE_WITH_REVIEW')""",
+    ).fetchone()[0]
+    auto_rate = round(auto_rem / total, 2) if total else 0.0
+
+    # --- 3.2 PR Merge Rate ---
+    # Total PRs = alerts that ever reached UNDER_REVIEW (had a PR created)
+    total_prs = conn.execute(
+        """SELECT COUNT(DISTINCT alert_id) FROM events
+           WHERE new_state = 'UNDER_REVIEW'""",
+    ).fetchone()[0]
+    merged = conn.execute(
+        "SELECT COUNT(*) FROM alerts WHERE lifecycle_state = 'MERGED'",
+    ).fetchone()[0]
+    merge_rate = round(merged / total_prs, 2) if total_prs else 0.0
+
+    # --- 3.3 Time to First Action ---
+    first_action_rows = conn.execute(
+        """SELECT a.alert_id, a.created_at,
+                  (SELECT MIN(e.timestamp) FROM events e
+                   WHERE e.alert_id = a.alert_id AND e.event_type = 'created') as first_action
+           FROM alerts a""",
+    ).fetchall()
+    ttfa_list = []
+    for row in first_action_rows:
+        try:
+            created = datetime.fromisoformat(row["created_at"])
+            action = datetime.fromisoformat(row["first_action"])
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            if action.tzinfo is None:
+                action = action.replace(tzinfo=timezone.utc)
+            ttfa_list.append((action - created).total_seconds() / 3600)
+        except (ValueError, TypeError):
+            pass
+    ttfa = round(sum(ttfa_list) / len(ttfa_list), 2) if ttfa_list else 0.0
+
+    # --- 4.1 Unowned Findings ---
+    unowned = conn.execute(
+        """SELECT COUNT(*) FROM alerts
+           WHERE (owner_team = '' OR owner_team IS NULL)
+           AND lifecycle_state NOT IN ('MERGED', 'CLOSED', 'DEFERRED')""",
+    ).fetchone()[0]
+
+    # --- 4.2 SLA Breach Count ---
+    now_iso = now.isoformat()
+    sla_breached = conn.execute(
+        """SELECT COUNT(*) FROM alerts
+           WHERE sla_deadline < ?
+           AND lifecycle_state NOT IN ('MERGED', 'CLOSED', 'DEFERRED')""",
+        (now_iso,),
+    ).fetchone()[0]
+
+    # --- 4.3 Lifecycle Completion Rate ---
+    completed = conn.execute(
+        "SELECT COUNT(*) FROM alerts WHERE lifecycle_state IN ('MERGED', 'ESCALATED', 'CLOSED')",
+    ).fetchone()[0]
+    completion_rate = round(completed / total, 2) if total else 0.0
+
+    return {
+        "sla_compliance_rate": sla_compliance,
+        "sla_compliant": sla_compliant,
+        "sla_total": sla_total_high,
+        "mttr_hours": mttr,
+        "aging_backlog": aging,
+        "auto_remediation_rate": auto_rate,
+        "auto_remediated": auto_rem,
+        "pr_merge_rate": merge_rate,
+        "merged": merged,
+        "total_prs": total_prs,
+        "time_to_first_action_hours": ttfa,
+        "unowned_findings": unowned,
+        "sla_breach_count": sla_breached,
+        "lifecycle_completion_rate": completion_rate,
+        "lifecycle_completed": completed,
+        "total": total,
     }

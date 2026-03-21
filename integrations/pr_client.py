@@ -36,6 +36,14 @@ class PullRequestPayload:
     status: str  # "open" | "merged" | "closed"
     url: str
     integration_mode: str = "stub"
+    reviewers: List[str] = None  # GitHub usernames for code review
+    labels: List[str] = None  # Labels to apply to the PR
+
+    def __post_init__(self):
+        if self.reviewers is None:
+            self.reviewers = []
+        if self.labels is None:
+            self.labels = []
 
 
 @dataclass
@@ -56,11 +64,26 @@ class PRDeliveryResult:
 ARTIFACT_PATH = "artifacts/pr_payload.json"
 
 
+def _load_reviewer_config() -> tuple[dict[str, list[str]], list[str]]:
+    """Load reviewer mappings from sage.config.json."""
+    config_path = Path("sage.config.json")
+    if config_path.exists():
+        config = json.loads(config_path.read_text())
+        team = config.get("reviewers", {})
+        security = config.get("security_reviewers", [])
+        return team, security
+    return {}, []
+
+
+TEAM_REVIEWERS, SECURITY_REVIEWERS = _load_reviewer_config()
+
+
 def build_pr_payload(
     alert: Alert,
     exec_result: ExecutionResult,
     pr_url: str,
     integration_mode: str = "stub",
+    review_required: bool = False,
 ) -> PullRequestPayload:
     """Build a structured PR payload from remediation results."""
     branch = f"codeql-fix/{alert.alert_id}"
@@ -71,6 +94,7 @@ def build_pr_payload(
         f"**Alert ID**: {alert.alert_id}",
         f"**Severity**: {alert.severity}",
         f"**File**: `{alert.file_path}`",
+        f"**Policy**: {'Security review required' if review_required else 'Standard review'}",
         "",
         "### Root Cause",
         exec_result.root_cause,
@@ -86,15 +110,27 @@ def build_pr_payload(
         "and branch protection policies in production environments.",
     ]
 
+    # Assign reviewers based on team + policy
+    reviewers = list(TEAM_REVIEWERS.get(alert.owner_team, []))
+    if review_required:
+        reviewers.extend(r for r in SECURITY_REVIEWERS if r not in reviewers)
+
+    # Labels
+    labels = [f"cwe:{alert.cwe}", f"severity:{alert.severity}", "sage:auto-remediation"]
+    if review_required:
+        labels.append("security-review-required")
+
     return PullRequestPayload(
         repo=f"violethawk/{alert.repo_name}",
         branch=branch,
-        title=f"[CodeQL] Fix {alert.rule_name} in {alert.file_path}",
+        title=f"[SAGE] Fix {alert.rule_name} in {alert.file_path}",
         body="\n".join(body_lines),
         files_changed=exec_result.files_changed,
         status="open",
         url=pr_url,
         integration_mode=integration_mode,
+        reviewers=reviewers,
+        labels=labels,
     )
 
 
@@ -197,6 +233,22 @@ def _deliver_pr_github(
 
     pr_url = pr_result.stdout.strip()
 
+    # Assign reviewers
+    if payload.reviewers:
+        subprocess.run(
+            ["gh", "pr", "edit", pr_url, "--add-reviewer",
+             ",".join(payload.reviewers)],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+
+    # Apply labels
+    if payload.labels:
+        subprocess.run(
+            ["gh", "pr", "edit", pr_url, "--add-label",
+             ",".join(payload.labels)],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+
     # Also write the artifact for audit
     Path(ARTIFACT_PATH).parent.mkdir(parents=True, exist_ok=True)
     payload_dict = asdict(payload)
@@ -240,12 +292,3 @@ def deliver_pr(
     if mode == "github" and repo_root:
         return _deliver_pr_github(payload, repo_root)
     return _deliver_pr_stub(payload, output_path)
-
-
-# Backward-compatible alias
-def write_pr_payload(
-    payload: PullRequestPayload,
-    output_path: str = ARTIFACT_PATH,
-) -> None:
-    """Write the PR payload to a JSON artifact (legacy wrapper)."""
-    deliver_pr(payload, output_path)

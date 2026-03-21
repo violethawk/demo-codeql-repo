@@ -50,8 +50,81 @@ def search():
         assert "cursor.execute(\"SELECT * FROM users WHERE name = ?\"" in fixed
         assert "(user_input,)" in fixed
 
+    def test_fixes_percent_format_sql(self, tmp_path):
+        """CWE-89: %-format SQL is replaced with parameterized query."""
+        code = '''\
+def search():
+    user_input = request.args.get("name", "")
+    query = "SELECT * FROM users WHERE name = '%s'" % user_input
+    cursor = db.cursor()
+    cursor.execute(query)
+    return cursor.fetchall()
+'''
+        (tmp_path / "app.py").write_text(code)
+
+        alert = _make_alert(
+            cwe="CWE-89",
+            file_path="app.py",
+            line_range=LineRange(start=1, end=6),
+        )
+        result = execute(alert, str(tmp_path))
+
+        assert result.success is True
+        fixed = (tmp_path / "app.py").read_text()
+        assert "%s" not in fixed
+        assert "?" in fixed
+        assert "(user_input,)" in fixed
+
+    def test_fixes_format_method_sql(self, tmp_path):
+        """CWE-89: .format() SQL is replaced with parameterized query."""
+        code = '''\
+def search():
+    user_input = request.args.get("name", "")
+    query = "SELECT * FROM users WHERE name = '{}'".format(user_input)
+    cursor = db.cursor()
+    cursor.execute(query)
+    return cursor.fetchall()
+'''
+        (tmp_path / "app.py").write_text(code)
+
+        alert = _make_alert(
+            cwe="CWE-89",
+            file_path="app.py",
+            line_range=LineRange(start=1, end=6),
+        )
+        result = execute(alert, str(tmp_path))
+
+        assert result.success is True
+        fixed = (tmp_path / "app.py").read_text()
+        assert ".format(" not in fixed
+        assert "?" in fixed
+
+    def test_fixes_concat_sql(self, tmp_path):
+        """CWE-89: string concatenation SQL is replaced with parameterized query."""
+        code = '''\
+def search():
+    user_input = request.args.get("name", "")
+    query = "SELECT * FROM users WHERE name = " + user_input
+    cursor = db.cursor()
+    cursor.execute(query)
+    return cursor.fetchall()
+'''
+        (tmp_path / "app.py").write_text(code)
+
+        alert = _make_alert(
+            cwe="CWE-89",
+            file_path="app.py",
+            line_range=LineRange(start=1, end=6),
+        )
+        result = execute(alert, str(tmp_path))
+
+        assert result.success is True
+        fixed = (tmp_path / "app.py").read_text()
+        assert "+ user_input" not in fixed
+        assert "?" in fixed
+
     def test_missing_pattern_fails(self, tmp_path):
-        """CWE-89: returns failure when f-string pattern not found."""
+        """CWE-89: returns failure when no SQL pattern found."""
         (tmp_path / "app.py").write_text("x = 1\ny = 2\n")
         alert = _make_alert(
             cwe="CWE-89",

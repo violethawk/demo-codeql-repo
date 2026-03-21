@@ -65,7 +65,7 @@ def test_parse_single_result(tmp_path):
     alerts = parse_sarif(str(path))
     assert len(alerts) == 1
     a = alerts[0]
-    assert a["alert_id"] == "sarif-0001"
+    assert a["alert_id"] == "scan-0001"
     assert a["cwe"] == "CWE-89"
     assert a["file_path"] == "app.py"
     assert a["line_range"]["start"] == 10
@@ -155,8 +155,8 @@ def test_sarif_to_fixtures(tmp_path):
     paths = sarif_to_fixtures(str(sarif_path), output_dir=str(out_dir))
     assert len(paths) == 1
 
-    fixture = json.loads(out_dir.joinpath("sarif-0001.json").read_text())
-    assert fixture["alert_id"] == "sarif-0001"
+    fixture = json.loads(out_dir.joinpath("scan-0001.json").read_text())
+    assert fixture["alert_id"] == "scan-0001"
     assert fixture["cwe"] == "CWE-89"
 
 

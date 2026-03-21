@@ -1,161 +1,207 @@
-# CodeQL Remediation Pipeline
+# Security Automation & Governance Engine (SAGE)
 
-> **Prototype** — Automated security alert remediation for enterprise
-> security teams. Takes a CodeQL alert as input, triages it against a
-> policy registry, applies the minimal safe fix when possible, and
-> produces auditable artifacts for review.
-
-## Problem
-
-Security teams receive hundreds of CodeQL alerts. Triaging, fixing, and
-tracking each one manually is slow and error-prone. This prototype
-demonstrates an end-to-end control loop that automates the workflow:
-
-```
-alert → triage → devin → remediation → validate → PR → notification → audit → dashboard
-```
-
-The system is intentionally small so it can be understood, run, and
-explained in under five minutes.
-
----
-
-## Quick Start
+CodeQL flags dozens of new issues every week and they just pile up. Security files them, engineering ignores them, auditors flag the backlog. SAGE makes that operationally impossible.
 
 ```bash
-# 1. Run the default demo (CWE-89 SQL injection — auto-remediated)
-python run_demo.py
-
-# 2. Run with the XSS fixture (CWE-79 — escalated to human review)
-python run_demo.py fixtures/sample_alert_xss.json
-
-# 3. Open the visual dashboard
-open artifacts/dashboard.html
-
-# 4. Read the demo summary (Markdown)
-cat artifacts/demo_summary.md
+python sage.py interactive    # open http://localhost:8000
 ```
 
-No external dependencies are required — the system uses only the Python
-standard library and `ruff` (if installed) for linting.
+Three vulnerable code blocks. Click one. Watch the policy engine decide, the execution layer fix it, and the routing panel show exactly which team, channel, and reviewer gets notified.
+
+Built as a technical demonstration for MedSecure's security remediation challenge.
 
 ---
 
-## Architecture
+## How it works
 
-| Layer | Module | Purpose |
-|-------|--------|---------|
-| Ingest | `pipeline/ingest.py` | Load alert JSON into typed `Alert` dataclass |
-| Policy | `pipeline/policy.py` | Per-CWE remediation eligibility rules |
-| Triage | `pipeline/triage.py` | Deterministic eligibility check against policy |
-| Execute | `pipeline/execute.py` | Apply minimal safe fix (dispatch by CWE) |
-| Validate | `pipeline/validate.py` | Run `py_compile` + `ruff` checks |
-| Output | `pipeline/output.py` | Produce `remediation_report.json` with full audit fields |
-| Devin | `integrations/devin_client.py` | Session creation — stub or real mode (`DevinSession`) |
-| PR | `integrations/pr_client.py` | PR payload builder + delivery (`PullRequestPayload`) |
-| Notify | `integrations/notify.py` | Notification builder + delivery (`NotificationPayload`) |
-| Dashboard | `integrations/dashboard.py` | HTML status page generated from artifacts |
+SAGE is a control plane between CodeQL and your engineering team. Findings go in. Fixed, reviewed, auditable outcomes come out.
 
-Each integration module exposes **typed dataclass contracts** for its
-request and response, and a **delivery function** with a documented
-placeholder showing exactly where a real API call would be inserted.
+```
+Detection → Decision → Execution → Review → Enforcement → Evidence
+  CodeQL     Policy     Devin      GitHub    SLA tracking   Audit log
+             Engine     + local    + owners  + escalation
+```
+
+**Two execution paths, split by policy:**
+
+| Policy | Execution | Example |
+|---|---|---|
+| `AUTO_REMEDIATE` | Local handler — instant fix, standard review | SQL injection (HIGH confidence) |
+| `REMEDIATE_WITH_REVIEW` | Devin API — analyzes code, plans fix, opens PR, security reviewer required | XSS, command injection (MEDIUM confidence) |
+| `ESCALATE` | No auto-fix — routed to owning team + security | Hardcoded credentials, auth flaws |
+| `DEFER` | Logged, revisited later | Low-risk findings |
+
+The local handler is the fast path for well-understood patterns. Devin is the execution engine for everything that needs analysis. Policy decides which path — not the developer, not the tool.
 
 ---
 
-## Integration Modes
+## Demo
 
-### Devin
+**Interactive** (recommended):
+```bash
+python sage.py interactive
+```
 
-Controlled by the `DEVIN_MODE` environment variable:
+**Full lifecycle** (5 phases — ingest, enforce, override, metrics, dashboard):
+```bash
+python sage.py full-demo
+```
 
-| Mode | Behavior |
-|------|----------|
-| `stub` (default) | Simulates session creation locally — no network calls |
-| `real` | Calls the Devin API — requires `DEVIN_API_KEY` |
+<details>
+<summary><strong>All commands</strong></summary>
 
 ```bash
-# Default: stub mode
-python run_demo.py
-
-# Real mode (placeholder until credentials are provided)
-DEVIN_MODE=real DEVIN_API_KEY=your-key python run_demo.py
+python sage.py demo                              # single alert
+python sage.py batch demo/fixtures/              # batch processing
+python sage.py sarif demo/fixtures/sample_scan.sarif  # SARIF input
+python sage.py metrics                           # all 9 KPIs
+python sage.py enforce                           # SLA + KPI enforcement
+python sage.py override demo-001 merge           # human override
+python sage.py override demo-001 status          # audit trail
+python sage.py check                             # validate deployment
 ```
 
-### GitHub PR / Notification
-
-Both modules follow the same pattern: a `build_*` function assembles a
-typed payload, and a `deliver_*` function handles delivery. In stub mode,
-delivery writes a JSON artifact to disk. The docstring of each `deliver_*`
-function contains the exact code needed to replace the stub with a real
-API call (GitHub REST API, Slack `chat.postMessage`, etc.).
+</details>
 
 ---
 
-## CWE Coverage
+## Enforcement
 
-| CWE | Name | Auto-Fix | Behavior |
-|-----|------|----------|----------|
-| CWE-89 | SQL Injection | Yes | Replaces f-string SQL with parameterized query |
-| CWE-79 | Cross-Site Scripting | No | Recognized, escalated to `NEEDS_HUMAN_REVIEW` |
-| CWE-78 | OS Command Injection | No | Recognized, escalated to `NEEDS_HUMAN_REVIEW` |
+Two layers, both with teeth.
 
-### Adding a new CWE
+**Per-finding SLA** — `run_enforce.py` on hourly cron:
 
-1. Add an entry to `REMEDIATION_POLICIES` in `pipeline/policy.py`
-2. If `auto_fix=True`, register a handler in `pipeline/execute.py`
-3. If `auto_fix=False`, the system routes to `NEEDS_HUMAN_REVIEW`
-   automatically — no additional code required
+| Condition | Action |
+|---|---|
+| No review after 24h | Remind owner via team channel |
+| No action after 48h | Escalate to `#engineering-leads` |
+| SLA breach | Notify `#security-escalations`, auto-escalate |
 
----
+**Aggregate KPI** — when metrics degrade, the system acts:
 
-## Output Artifacts
+| KPI crosses threshold | System action |
+|---|---|
+| SLA compliance < 80% | Escalate all at-risk findings |
+| Lifecycle completion < 80% | Notify security lead |
+| PR merge rate < 60% | Flag trust issue |
+| Unowned findings > 0 | Auto-assign to default team |
 
-After running, `artifacts/` contains:
-
-| File | Description |
-|------|-------------|
-| `remediation_report.json` | Full audit record — disposition, decision trace, timestamps, integration mode |
-| `pr_payload.json` | Structured PR payload (typed `PullRequestPayload`) |
-| `notification_payload.json` | Team notification payload (typed `NotificationPayload`) |
-| `dashboard.html` | Visual status page for demo and review |
-| `demo_summary.md` | Markdown summary of the run, suitable for sharing |
+KPIs aren't a dashboard. They drive system behavior. Thresholds configured in `sage.config.json`.
 
 ---
 
-## What is Real vs Stubbed
+## KPIs
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Alert ingestion | **Implemented** | Reads JSON fixtures into typed dataclass |
-| Policy registry | **Implemented** | Deterministic per-CWE rules |
-| Triage engine | **Implemented** | Severity + policy + snippet checks |
-| CWE-89 fix | **Implemented** | Rewrites vulnerable code to parameterized query |
-| Validation | **Implemented** | Runs `py_compile` + `ruff` |
-| Audit report | **Implemented** | Full JSON with timestamps, trace, mode |
-| HTML dashboard | **Implemented** | Generated from artifact data |
-| Devin session | **Stubbed** | Simulated locally; real-mode placeholder included |
-| GitHub PR | **Stubbed** | Writes JSON artifact; `deliver_pr()` shows real API call |
-| Slack notification | **Stubbed** | Writes JSON artifact; `deliver_notification()` shows real API call |
+```
+$ python run_metrics.py
 
----
+  OUTCOME METRICS
+  SLA Compliance Rate:       33% (1/3 high-risk resolved within SLA)
+  Mean Time to Remediation:  0m
+  Aging High-Risk Backlog:   2 open (2 within SLA, 0 breached)
 
-## Path to Production
+  SYSTEM EFFECTIVENESS
+  Auto-Remediation Rate:     100% (3/3 resolved via automation)
+  PR Merge Rate:             33% (1/3 PRs merged)
 
-| Step | What to do |
-|------|------------|
-| Connect Devin | Set `DEVIN_MODE=real`, provide `DEVIN_API_KEY`, replace placeholder in `_create_session_real()` |
-| Connect GitHub | Replace `deliver_pr()` body with `requests.post()` to GitHub REST API |
-| Connect Slack | Replace `deliver_notification()` body with Slack `chat.postMessage` |
-| Add CWEs | Add policy entries + optional fix handlers |
-| Webhook trigger | Replace CLI invocation with a GitHub webhook listener |
-| Persistence | Store reports in a database instead of JSON files |
+  GOVERNANCE
+  Unowned Findings:          PASS
+  SLA Breaches:              PASS
+  Lifecycle Completion:      33% (1/3 reached terminal state)
+```
+
+9 metrics across three categories: outcome, system effectiveness, governance. All computed from `pipeline.db`.
 
 ---
 
-## Constraints (by design)
+## Integration
 
-- No databases, queues, or cloud infrastructure
-- No external dependencies beyond the Python standard library
-- No complex frameworks
-- All behavior is deterministic and auditable
-- The system is honest about what is stubbed vs implemented
+| System | How to enable | What happens |
+|---|---|---|
+| Devin | `DEVIN_MODE=real` + `DEVIN_API_KEY` | Creates sessions, polls completion, extracts plan + PR + insights |
+| GitHub | `PR_MODE=github` | Branch → commit → push → PR with reviewers + labels via `gh` |
+| Slack | `NOTIFY_MODE=slack` + `SLACK_WEBHOOK_URL` | Block Kit messages to team channels + escalation channels |
+
+All fall back to stub mode when env vars aren't set. `python run_check.py` validates connectivity.
+
+Real Devin sessions create branches in this repo — see `devin/*` branches for proof of live API integration.
+
+<details>
+<summary><strong>Architecture details</strong></summary>
+
+```
+   ┌──────────┐      ┌──────────────┐      ┌──────────┐      ┌─────────────┐
+   │  CodeQL  │ ───▶ │ Policy Engine│ ───▶ │  Devin   │ ───▶ │   GitHub PR │
+   │ Findings │      │ Risk + Fix   │      │ Remediate│      │ + Reviewers │
+   └──────────┘      │ Confidence   │      └──────────┘      └─────────────┘
+                     └──────┬───────┘                               │
+                            │                                       ▼
+                            │                              ┌─────────────────-┐
+                            ├──────────────▶               │ Enforcement Loop │
+                            │                              │ Remind / Escalate│
+                            ▼                              └────────-┬────────┘
+                    ┌──────────────┐                                 │
+                    │ Escalation   │ ◀───────────────────────────────┘
+                    │ Security / EM│
+                    └──────┬───────┘
+                           ▼
+                    ┌──────────────┐
+                    │  Audit Trail │
+                    │ Evidence Log │
+                    └──────────────┘
+```
+
+| Layer | Module |
+|---|---|
+| Detection | `pipeline/ingest.py`, `pipeline/sarif.py` |
+| Decision | `pipeline/policy.py`, `pipeline/triage.py` |
+| Execution | `integrations/devin_client.py`, `pipeline/execute.py` |
+| Review | `integrations/pr_client.py`, `integrations/notify.py` |
+| Enforcement | `pipeline/enforcement.py`, `run_enforce.py` |
+| Evidence | `pipeline/store.py`, `pipeline/output.py` |
+| Override | `run_override.py` |
+
+**Policy table:**
+
+| CWE | Name | Action | Confidence | SLA |
+|---|---|---|---|---|
+| CWE-89 | SQL Injection | `AUTO_REMEDIATE` | HIGH | 24h |
+| CWE-79 | Cross-Site Scripting | `REMEDIATE_WITH_REVIEW` | MEDIUM | 24h |
+| CWE-78 | Command Injection | `REMEDIATE_WITH_REVIEW` | MEDIUM | 24h |
+| CWE-798 | Hardcoded Credentials | `ESCALATE` | LOW | 12h |
+| CWE-287 | Improper Authentication | `ESCALATE` | LOW | 12h |
+
+**Lifecycle:**
+
+```
+DETECTED → TRIAGED → REMEDIATED → UNDER_REVIEW → MERGED → CLOSED
+                   ↘ ESCALATED (policy, SLA breach, or KPI trigger)
+                   ↘ DEFERRED (low-risk)
+```
+
+Every transition is timestamped. Invalid transitions are rejected. `run_override.py` provides human merge/reject/defer/escalate/reopen.
+
+**CI/CD** — `.github/workflows/sage.yml`:
+- Triggers on CodeQL completion, hourly cron, or manual dispatch
+- Fetches alerts via `gh api`, runs pipeline, enforces KPIs, uploads artifacts
+
+</details>
+
+---
+
+## Tests
+
+```bash
+python -m pytest tests/ -v    # 86 tests
+```
+
+Covers: ingest, triage, policy, execute (3 CWEs × 4 SQL patterns), validate, store, enforcement (SLA + KPI-driven), notifications, escalation routing, dashboard, and human overrides.
+
+---
+
+## Docs
+
+| | |
+|---|---|
+| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | 12 functional, 7 non-functional, 5 governance requirements |
+| [docs/KPIS.md](docs/KPIS.md) | 9 KPIs mapped to the system components that drive them |
