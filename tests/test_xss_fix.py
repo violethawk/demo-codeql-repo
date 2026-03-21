@@ -1,9 +1,9 @@
-"""Tests for CWE-79 reflected XSS fix in target_repo/app.py."""
+"""Tests for CWE-79 reflected XSS fix in demo/app.py."""
 
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "target_repo"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "demo"))
 
 from app import app
 
