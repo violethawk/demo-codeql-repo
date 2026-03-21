@@ -327,7 +327,7 @@ def _create_remediation_session(alert: Alert) -> dict:
     body = {
         "prompt": _build_remediation_prompt(alert),
         "structured_output_schema": _REMEDIATION_OUTPUT_SCHEMA,
-        "idempotent": False,
+        "idempotent": True,
         "tags": [
             f"sage:{alert.alert_id}",
             f"sage:remediate_with_review",
