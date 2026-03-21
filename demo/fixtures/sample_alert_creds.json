@@ -1,0 +1,21 @@
+{
+  "alert_id": "demo-004",
+  "rule_name": "Hardcoded credentials in source code",
+  "severity": "critical",
+  "cwe": "CWE-798",
+  "language": "python",
+  "repo_name": "demo-codeql-repo",
+  "default_branch": "main",
+  "file_path": "app.py",
+  "line_range": {
+    "start": 8,
+    "end": 8
+  },
+  "vulnerable_code_snippet": [
+    "DATABASE_PASSWORD = 'supersecret123'"
+  ],
+  "alert_description": "A hardcoded password was found in source code. Credentials in code can be extracted by anyone with access to the repository.",
+  "security_guidance": "Move credentials to environment variables or a secrets manager. Rotate the exposed credential immediately.",
+  "owner_team": "platform",
+  "auto_fix_confidence": 0.2
+}

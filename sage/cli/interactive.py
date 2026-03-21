@@ -94,12 +94,17 @@ FIXED_SNIPPETS = {
         "after": '''    host = request.args.get("host", "127.0.0.1")
     subprocess.run(["ping", "-c", "1", host], capture_output=True)''',
     },
+    "CWE-798": {
+        "before": '''DATABASE_PASSWORD = "supersecret123"''',
+        "after": '''DATABASE_PASSWORD = os.environ["DATABASE_PASSWORD"]''',
+    },
 }
 
 FIXTURES = {
     "CWE-89": "demo/fixtures/sample_alert.json",
     "CWE-79": "demo/fixtures/sample_alert_xss.json",
     "CWE-78": "demo/fixtures/sample_alert_cmdi.json",
+    "CWE-798": "demo/fixtures/sample_alert_creds.json",
 }
 
 # Routing metadata for display
@@ -129,6 +134,15 @@ ROUTING_INFO = {
         "security_review": True,
         "security_reviewer": "security-lead",
         "sla": "24h",
+    },
+    "CWE-798": {
+        "action": "ESCALATE",
+        "team": "platform",
+        "channel": "#platform-security",
+        "reviewers": [],
+        "security_review": True,
+        "security_reviewer": "security-lead",
+        "sla": "12h",
     },
 }
 
@@ -287,6 +301,16 @@ HTML = """\
         <div class="code-block code-vuln" id="code-CWE-78">""" + FIXED_SNIPPETS["CWE-78"]["before"] + """</div>
         <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin API (~2-5 min)</div>
       </div>
+
+      <div class="vuln-card" id="card-CWE-798" onclick="remediate('CWE-798')">
+        <div class="vuln-header">
+          <span class="vuln-cwe">CWE-798</span>
+          <span class="vuln-badge badge-vuln" id="badge-CWE-798">VULNERABLE</span>
+        </div>
+        <div class="vuln-name">Hardcoded Credentials</div>
+        <div class="code-block code-vuln" id="code-CWE-798">""" + FIXED_SNIPPETS["CWE-798"]["before"] + """</div>
+        <div class="vuln-action">ESCALATE &mdash; human review only (~1s)</div>
+      </div>
     </div>
 
     <div class="terminal-wrapper">
@@ -387,6 +411,14 @@ HTML = """\
       'start-CWE-78': {
         title: 'Policy Decision: REMEDIATE_WITH_REVIEW',
         body: 'Command injection fixes require understanding the full invocation context. The policy engine routes this to Devin for analysis. Security reviewer required. The fix replaces shell commands with argument-list execution.'
+      },
+      'start-CWE-798': {
+        title: 'Policy Decision: ESCALATE',
+        body: 'Hardcoded credentials cannot be safely auto-remediated — the fix requires secret rotation and vault integration, not just a code change. The policy engine assigns ESCALATE: no auto-fix attempted, finding routed directly to the owning team and security lead. SLA is 12 hours (tighter than code fixes) because exposed credentials are an active risk.'
+      },
+      'done-ESCALATE': {
+        title: 'Escalated to Human Review',
+        body: 'This is the system working correctly. Not every finding should be auto-fixed. The policy engine decided this class of vulnerability requires human judgment, and the system routed it to the right people with a 12-hour SLA. The enforcement layer will remind at 12h and escalate at 24h.'
       },
       'done-AUTO_REMEDIATE': {
         title: 'Execution Complete: Local Handler',
@@ -575,10 +607,14 @@ HTML = """\
             status.textContent = cwe + ' remediated (local handler)';
           }
         } else {
-          card.className = 'vuln-card';
-          badge.className = 'vuln-badge badge-vuln';
+          card.className = 'vuln-card processing';
+          badge.className = 'vuln-badge badge-processing';
           badge.textContent = 'ESCALATED';
-          status.textContent = cwe + ' escalated for review';
+          code.innerHTML = '<div style="font-size:0.7rem;color:var(--amber);font-weight:700;margin-bottom:0.3rem">ESCALATED TO HUMAN REVIEW</div>' +
+            '<div style="font-size:0.72rem;color:var(--muted)">Policy determined this class of vulnerability cannot be safely auto-remediated. Routed to owning team + security lead.</div>';
+          code.className = 'code-block';
+          code.style.cssText = 'border-left:3px solid var(--amber);white-space:normal';
+          status.textContent = cwe + ' escalated for human review';
           status.className = 'status-text';
         }
 
@@ -587,7 +623,7 @@ HTML = """\
           const action = (data.routing && data.routing.action) || 'AUTO_REMEDIATE';
           narrate('done-' + action);
         } else {
-          narrate('done-ESCALATED');
+          narrate('done-ESCALATE');
         }
 
         // Briefly show the governance narration, then show routing
@@ -663,7 +699,7 @@ HTML = """\
 
       await fetch('/api/reset', {method: 'POST'});
 
-      ['CWE-89', 'CWE-79', 'CWE-78'].forEach(cwe => {
+      ['CWE-89', 'CWE-79', 'CWE-78', 'CWE-798'].forEach(cwe => {
         const card = document.getElementById('card-' + cwe);
         const badge = document.getElementById('badge-' + cwe);
         const code = document.getElementById('code-' + cwe);
