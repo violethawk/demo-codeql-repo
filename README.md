@@ -10,7 +10,9 @@ Five vulnerable code blocks. Click one. Watch the policy engine decide, the exec
 
 **[Live demo](https://demo-codeql-repo.onrender.com/)** — no setup required.
 
-Built for MedSecure's security remediation challenge.
+![SAGE interactive dashboard](docs/demo-screenshot.png)
+
+Built for MedSecure's security remediation challenge — where the last audit flagged a growing backlog of unresolved findings, no consistent SLA enforcement, and no evidence trail connecting detection to resolution.
 
 ---
 
@@ -45,7 +47,9 @@ Detection → Decision → Execution → Review → Enforcement → Evidence
 | `ESCALATE` | No auto-fix — routed to owning team + security | Hardcoded credentials, auth flaws |
 | `DEFER` | Logged, revisited later | Low-risk findings |
 
-The local handler is the fast path for well-understood patterns. Devin is the execution engine for everything that needs analysis. Policy decides which path — not the developer, not the tool.
+The local handler is the fast path for well-understood patterns — SQL injection with a known parameterization fix doesn't need an AI to reason about it. Devin handles the cases that do: cross-site scripting where the fix depends on rendering context, command injection where the safe alternative depends on what the subprocess actually does. CodeQL can detect these, but it can't fix them — its autofix covers a narrow set of pattern rewrites. A general-purpose copilot can suggest a patch, but it doesn't own the workflow. Devin creates a session, analyzes the surrounding code, plans a fix, opens a PR, and assigns the right reviewers. Policy decides which path — not the developer, not the tool.
+
+**Proof of live integration:** Devin has created real branches in this repo via API — see [`devin/*` branches](../../branches/all?query=devin) for session artifacts, plans, and PRs.
 
 ---
 
@@ -104,6 +108,16 @@ KPIs aren't a dashboard. They drive system behavior. Thresholds configured in `s
 
 ---
 
+## Developer experience
+
+Engineers don't interact with SAGE directly — they interact with pull requests. A SAGE-generated PR arrives with the vulnerability context, the fix, the CWE reference, and the right reviewers already assigned. The engineer reviews code, not a security ticket.
+
+If the fix is wrong, the engineer rejects it: `python -m sage override <id> reject`. If it needs more context, they escalate it: `python -m sage override <id> escalate`. Every override is logged with the actor, timestamp, and reason — creating the audit trail that satisfies compliance without adding process overhead.
+
+The goal is to make the secure path the path of least resistance. Findings don't pile up in a backlog because SAGE converts them into reviewable PRs before the next standup.
+
+---
+
 ## KPIs
 
 ```
@@ -148,7 +162,7 @@ All fall back to stub mode when env vars aren't set. `python -m sage check` vali
 | `NOTIFY_MODE` | Slack notifications | `stub` |
 | `SLACK_WEBHOOK_URL` | Slack delivery | — |
 
-Real Devin sessions create branches in this repo — see `devin/*` branches for proof of live API integration.
+All integrations have been tested live — see [`devin/*` branches](../../branches/all?query=devin) for real API session artifacts.
 
 <details>
 <summary><strong>Architecture details</strong></summary>
