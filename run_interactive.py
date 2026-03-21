@@ -13,12 +13,65 @@ import io
 import os
 import sys
 import threading
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-# Store original app.py content for reset
-APP_PATH = Path("target_repo/app.py")
-APP_ORIGINAL = APP_PATH.read_text() if APP_PATH.exists() else ""
+# Job queue for async remediation
+_jobs: dict[str, dict] = {}  # job_id -> {status, result}
+_jobs_lock = threading.Lock()
+
+# Vulnerable app.py — the known-good starting state.
+# Hardcoded so the demo always starts from the vulnerable version,
+# regardless of what's on disk when the server launches.
+APP_PATH = Path("demo/app.py")
+APP_ORIGINAL = '''\
+import os
+import sqlite3
+
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+DATABASE = "users.db"
+
+
+def get_db():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+@app.route("/search")
+def search_user():
+    user_input = request.args.get("name", "")
+    query = f"SELECT * FROM users WHERE name = '{user_input}'"
+    cursor = get_db().cursor()
+    cursor.execute(query)
+    return jsonify([dict(r) for r in cursor.fetchall()])
+
+
+@app.route("/search_page")
+def search_page():
+    user_input = request.args.get("query", "")
+    return f"<h1>Results for {user_input}</h1>"
+
+
+@app.route("/ping")
+def ping_host():
+    host = request.args.get("host", "127.0.0.1")
+    os.system("ping -c 1 " + host)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
+'''
 
 # Fixed code snippets (pre-computed for instant display)
 FIXED_SNIPPETS = {
@@ -32,10 +85,8 @@ FIXED_SNIPPETS = {
     cursor.execute("SELECT * FROM users WHERE name = ?", (user_input,))''',
     },
     "CWE-79": {
-        "before": '''    user_input = request.args.get("query", "")
-    return f"<h1>Results for {user_input}</h1>"''',
-        "after": '''    user_input = request.args.get("query", "")
-    return f"<h1>Results for {html.escape(user_input)}</h1>"''',
+        "before": '    user_input = request.args.get("query", "")\n    return f"&lt;h1&gt;Results for {user_input}&lt;/h1&gt;"',
+        "after": '    user_input = request.args.get("query", "")\n    return f"&lt;h1&gt;Results for {html.escape(user_input)}&lt;/h1&gt;"',
     },
     "CWE-78": {
         "before": '''    host = request.args.get("host", "127.0.0.1")
@@ -46,9 +97,9 @@ FIXED_SNIPPETS = {
 }
 
 FIXTURES = {
-    "CWE-89": "fixtures/sample_alert.json",
-    "CWE-79": "fixtures/sample_alert_xss.json",
-    "CWE-78": "fixtures/sample_alert_cmdi.json",
+    "CWE-89": "demo/fixtures/sample_alert.json",
+    "CWE-79": "demo/fixtures/sample_alert_xss.json",
+    "CWE-78": "demo/fixtures/sample_alert_cmdi.json",
 }
 
 # Routing metadata for display
@@ -107,7 +158,7 @@ HTML = """\
     .header .sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
 
     /* Vulnerability cards */
-    .vuln-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .vuln-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
     .vuln-card { background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
                  padding: 1.25rem; cursor: pointer; transition: all 0.2s; position: relative; }
     .vuln-card:hover { border-color: var(--cyan); transform: translateY(-2px); }
@@ -191,8 +242,19 @@ HTML = """\
 <body>
   <div class="container">
     <div class="header">
-      <h1><span>SAGE</span> Interactive Demo</h1>
-      <div class="sub">Click a vulnerability. Watch the system remediate it.</div>
+      <h1><span>SAGE</span> Security Automation &amp; Governance Engine</h1>
+      <div class="sub">Click a vulnerability. Watch the system decide, execute, route, and record.</div>
+      <div style="margin-top:0.6rem;font-size:0.72rem;color:var(--muted);font-family:monospace;letter-spacing:0.04em">
+        Detection &rarr; <span style="color:var(--cyan)">Decision</span> &rarr;
+        <span style="color:var(--cyan)">Execution</span> &rarr; Review &rarr;
+        <span style="color:var(--cyan)">Enforcement</span> &rarr; Evidence
+      </div>
+    </div>
+
+    <!-- Narration panel -->
+    <div id="narration" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1.25rem;display:none">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--cyan);margin-bottom:0.4rem" id="narration-title"></div>
+      <div style="font-size:0.85rem;line-height:1.6;color:var(--text)" id="narration-body"></div>
     </div>
 
     <div class="vuln-grid">
@@ -203,7 +265,7 @@ HTML = """\
         </div>
         <div class="vuln-name">SQL Injection</div>
         <div class="code-block code-vuln" id="code-CWE-89">""" + FIXED_SNIPPETS["CWE-89"]["before"] + """</div>
-        <div class="vuln-action">AUTO_REMEDIATE &mdash; local handler (fast path)</div>
+        <div class="vuln-action">AUTO_REMEDIATE &mdash; local handler (~1s)</div>
       </div>
 
       <div class="vuln-card" id="card-CWE-79" onclick="remediate('CWE-79')">
@@ -213,7 +275,7 @@ HTML = """\
         </div>
         <div class="vuln-name">Cross-Site Scripting</div>
         <div class="code-block code-vuln" id="code-CWE-79">""" + FIXED_SNIPPETS["CWE-79"]["before"] + """</div>
-        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin execution engine</div>
+        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin API (~2-5 min)</div>
       </div>
 
       <div class="vuln-card" id="card-CWE-78" onclick="remediate('CWE-78')">
@@ -223,7 +285,7 @@ HTML = """\
         </div>
         <div class="vuln-name">Command Injection</div>
         <div class="code-block code-vuln" id="code-CWE-78">""" + FIXED_SNIPPETS["CWE-78"]["before"] + """</div>
-        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin execution engine</div>
+        <div class="vuln-action">REMEDIATE_WITH_REVIEW &mdash; Devin API (~2-5 min)</div>
       </div>
     </div>
 
@@ -313,6 +375,46 @@ HTML = """\
 
     const fixedCode = """ + json.dumps(FIXED_SNIPPETS) + """;
 
+    const narrations = {
+      'start-CWE-89': {
+        title: 'Policy Decision: AUTO_REMEDIATE',
+        body: 'SQL injection has a well-understood fix pattern (parameterized queries). The policy engine assigns AUTO_REMEDIATE with HIGH confidence. This means the local handler applies the fix instantly — no Devin API call, no wait. Standard code review only.'
+      },
+      'start-CWE-79': {
+        title: 'Policy Decision: REMEDIATE_WITH_REVIEW',
+        body: 'XSS fixes depend on the output context (HTML body, attribute, script). The policy engine assigns REMEDIATE_WITH_REVIEW — Devin analyzes the code, produces a remediation plan, implements the fix, and opens a PR. A security reviewer is required before merge.'
+      },
+      'start-CWE-78': {
+        title: 'Policy Decision: REMEDIATE_WITH_REVIEW',
+        body: 'Command injection fixes require understanding the full invocation context. The policy engine routes this to Devin for analysis. Security reviewer required. The fix replaces shell commands with argument-list execution.'
+      },
+      'done-AUTO_REMEDIATE': {
+        title: 'Execution Complete: Local Handler',
+        body: 'The local handler applied a deterministic fix in under a second. The parameterized query pattern is well-understood — no AI analysis needed. The PR is routed to the backend team for standard code review. If no one reviews within 24 hours, the enforcement layer sends a reminder.'
+      },
+      'done-REMEDIATE_WITH_REVIEW': {
+        title: 'Execution Complete: Devin',
+        body: 'Devin analyzed the vulnerability, produced a remediation plan with root cause analysis, implemented the fix, and generated test coverage. The PR requires both an engineering reviewer and a security reviewer before merge. This is the key architectural split: policy decides, Devin executes, humans approve.'
+      },
+      'done-ESCALATED': {
+        title: 'Escalated to Human Review',
+        body: 'The system could not confidently remediate this finding. It has been routed to the owning team and security lead for manual review. The enforcement layer will remind them at 24h and escalate at 48h if no action is taken.'
+      },
+      'routing': {
+        title: 'Review & Routing',
+        body: 'Every fix is routed to the right humans. The notification goes to the team\\'s Slack channel. The PR gets assigned reviewers. If the policy requires security review, a security lead is added. The escalation path ensures nothing stalls — 24h reminder, 48h escalation, SLA breach flagged.'
+      }
+    };
+
+    function narrate(key) {{
+      const n = narrations[key];
+      const el = document.getElementById('narration');
+      if (!n) {{ el.style.display = 'none'; return; }}
+      document.getElementById('narration-title').textContent = n.title;
+      document.getElementById('narration-body').textContent = n.body;
+      el.style.display = 'block';
+    }}
+
     function addLine(text, cls = '') {
       const terminal = document.getElementById('terminal');
       const line = document.createElement('div');
@@ -343,18 +445,43 @@ HTML = """\
       status.className = 'status-text processing-indicator';
 
       clearTerminal();
+      narrate('start-' + cwe);
       addLine('$ sage remediate ' + cwe, 'line-info');
       addLine('');
 
       try {
-        const resp = await fetch('/api/remediate', {
+        // Start the job
+        const startResp = await fetch('/api/remediate', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({cwe: cwe}),
         });
-        const data = await resp.json();
+        const startData = await startResp.json();
+        const jobId = startData.job_id;
+
+        if (!jobId) throw new Error(startData.error || 'No job ID returned');
+
+        addLine('Processing... (polling for completion)', 'line-info');
+
+        // Poll until done
+        let data = null;
+        while (true) {{
+          await new Promise(r => setTimeout(r, 2000));
+          const pollResp = await fetch('/api/status/' + jobId);
+          const pollData = await pollResp.json();
+          if (pollData.status === 'running') {{
+            // Still working
+            continue;
+          }} else {{
+            data = pollData;
+            break;
+          }}
+        }}
 
         // Stream output with delay for visual effect
+        clearTerminal();
+        addLine('$ sage remediate ' + cwe, 'line-info');
+        addLine('');
         const lines = data.output.split('\\n');
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
@@ -413,6 +540,18 @@ HTML = """\
           status.textContent = cwe + ' escalated for review';
           status.className = 'status-text';
         }
+
+        // Narrate the result
+        if (data.disposition === 'PR_READY') {{
+          const action = (data.routing && data.routing.action) || 'AUTO_REMEDIATE';
+          narrate('done-' + action);
+        }} else {{
+          narrate('done-ESCALATED');
+        }}
+
+        // Briefly show the governance narration, then show routing
+        await new Promise(r => setTimeout(r, 2000));
+        narrate('routing');
 
         // Populate routing panel
         showRouting(data);
@@ -507,17 +646,35 @@ HTML = """\
 
 class SAGEHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/" or self.path == "/index.html":
+        parsed = urlparse(self.path)
+
+        # Poll job status
+        if parsed.path.startswith("/api/status/"):
+            job_id = parsed.path.split("/")[-1]
+            with _jobs_lock:
+                job = _jobs.get(job_id)
+            if not job:
+                self._json_response(404, {"error": "job not found"})
+            elif job["status"] == "running":
+                self._json_response(200, {"status": "running", "job_id": job_id})
+            else:
+                self._json_response(200, job["result"])
+            return
+
+        # Existing GET handler
+        return self._handle_get(parsed)
+
+    def _handle_get(self, parsed):
+        if parsed.path in ("/", "/index.html"):
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
             self.wfile.write(HTML.encode())
-        elif self.path.startswith("/artifacts/"):
-            # Serve artifact files
-            file_path = Path("." + self.path)
+        elif parsed.path.startswith("/artifacts/"):
+            file_path = Path("." + parsed.path)
             if file_path.exists():
                 self.send_response(200)
-                self.send_header("Content-Type", "text/html" if self.path.endswith(".html") else "application/json")
+                self.send_header("Content-Type", "text/html" if parsed.path.endswith(".html") else "application/json")
                 self.end_headers()
                 self.wfile.write(file_path.read_bytes())
             else:
@@ -543,66 +700,19 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
             # Restore app.py before each run
             APP_PATH.write_text(APP_ORIGINAL)
 
-            # Capture pipeline output
-            from pipeline.store import init_db
-            from run_demo import process_alert
+            # Start remediation in background thread, return job ID
+            job_id = uuid.uuid4().hex[:8]
+            with _jobs_lock:
+                _jobs[job_id] = {"status": "running", "result": None}
 
-            old_stdout = sys.stdout
-            sys.stdout = captured = io.StringIO()
+            thread = threading.Thread(
+                target=self._run_remediation,
+                args=(job_id, cwe, fixture),
+                daemon=True,
+            )
+            thread.start()
 
-            try:
-                db_conn = init_db()
-                report = process_alert(fixture, "target_repo", db_conn=db_conn)
-                db_conn.close()
-            except Exception as e:
-                report = {"disposition": "ERROR", "error": str(e)}
-            finally:
-                sys.stdout = old_stdout
-
-            # Load notification artifact if it was written
-            notif = {}
-            notif_path = Path("artifacts/notification_payload.json")
-            if notif_path.exists():
-                try:
-                    notif = json.loads(notif_path.read_text())
-                except Exception:
-                    pass
-
-            pr_payload = {}
-            pr_path = Path("artifacts/pr_payload.json")
-            if pr_path.exists():
-                try:
-                    pr_payload = json.loads(pr_path.read_text())
-                except Exception:
-                    pass
-
-            routing = ROUTING_INFO.get(cwe, {})
-            devin_mode = os.environ.get("DEVIN_MODE", "stub")
-
-            # Extract Devin session data from report if present
-            devin_session = {
-                "mode": devin_mode,
-                "session_id": report.get("devin_session_id", ""),
-                "plan": report.get("remediation_plan"),
-                "insights": report.get("devin_insights"),
-                "pr_url": report.get("pr_url", ""),
-            }
-
-            self._json_response(200, {
-                "cwe": cwe,
-                "disposition": report.get("disposition", "ERROR"),
-                "output": captured.getvalue(),
-                "routing": routing,
-                "notification": notif,
-                "devin": devin_session,
-                "pr": {
-                    "title": pr_payload.get("title", ""),
-                    "branch": pr_payload.get("branch", ""),
-                    "reviewers": pr_payload.get("reviewers", []),
-                    "labels": pr_payload.get("labels", []),
-                    "url": pr_payload.get("url", ""),
-                },
-            })
+            self._json_response(200, {"status": "running", "job_id": job_id})
 
         elif parsed.path == "/api/reset":
             APP_PATH.write_text(APP_ORIGINAL)
@@ -614,6 +724,72 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
 
         else:
             self._json_response(404, {"error": "not found"})
+
+    @staticmethod
+    def _run_remediation(job_id: str, cwe: str, fixture: str):
+        """Run the pipeline in a background thread."""
+        from pipeline.store import init_db
+        from run_demo import process_alert
+
+        old_stdout = sys.stdout
+        sys.stdout = captured = io.StringIO()
+
+        try:
+            db_conn = init_db()
+            report = process_alert(fixture, "demo", db_conn=db_conn)
+            db_conn.close()
+        except Exception as e:
+            report = {"disposition": "ERROR", "error": str(e)}
+        finally:
+            sys.stdout = old_stdout
+
+        # Load artifacts
+        notif = {}
+        notif_path = Path("artifacts/notification_payload.json")
+        if notif_path.exists():
+            try:
+                notif = json.loads(notif_path.read_text())
+            except Exception:
+                pass
+
+        pr_payload = {}
+        pr_path = Path("artifacts/pr_payload.json")
+        if pr_path.exists():
+            try:
+                pr_payload = json.loads(pr_path.read_text())
+            except Exception:
+                pass
+
+        routing = ROUTING_INFO.get(cwe, {})
+        devin_mode = os.environ.get("DEVIN_MODE", "stub")
+
+        devin_session = {
+            "mode": devin_mode,
+            "session_id": report.get("devin_session_id", ""),
+            "plan": report.get("remediation_plan"),
+            "insights": report.get("devin_insights"),
+            "pr_url": report.get("pr_url", ""),
+        }
+
+        result = {
+            "status": "done",
+            "cwe": cwe,
+            "disposition": report.get("disposition", "ERROR"),
+            "output": captured.getvalue(),
+            "routing": routing,
+            "notification": notif,
+            "devin": devin_session,
+            "pr": {
+                "title": pr_payload.get("title", ""),
+                "branch": pr_payload.get("branch", ""),
+                "reviewers": pr_payload.get("reviewers", []),
+                "labels": pr_payload.get("labels", []),
+                "url": pr_payload.get("url", ""),
+            },
+        }
+
+        with _jobs_lock:
+            _jobs[job_id] = {"status": "done", "result": result}
 
     def _json_response(self, code, data):
         self.send_response(code)
@@ -627,11 +803,57 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def _self_test():
+    """Run a quick CWE-89 remediation to verify the system works."""
+    from pipeline.store import init_db
+    from run_demo import process_alert
+
+    APP_PATH.write_text(APP_ORIGINAL)
+    db_path = Path("pipeline.db")
+    if db_path.exists():
+        db_path.unlink()
+
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        db_conn = init_db()
+        report = process_alert("demo/fixtures/sample_alert.json", "demo", db_conn=db_conn, quiet=True)
+        db_conn.close()
+    finally:
+        sys.stdout = old_stdout
+
+    APP_PATH.write_text(APP_ORIGINAL)
+    db_path = Path("pipeline.db")
+    if db_path.exists():
+        db_path.unlink()
+    # Clean artifacts from self-test
+    for f in Path("artifacts").glob("*"):
+        f.unlink()
+
+    if report.get("disposition") == "PR_READY":
+        return True, "CWE-89 → PR_READY"
+    else:
+        return False, f"CWE-89 → {report.get('disposition', 'ERROR')}: {report.get('error', '')}"
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
-    server = http.server.HTTPServer(("", port), SAGEHandler)
-    print(f"\n  SAGE Interactive Demo")
+
+    # Self-test before serving
+    print("\n  SAGE Interactive Demo")
+    print("  Running self-test...", end=" ", flush=True)
+    ok, detail = _self_test()
+    if ok:
+        print(f"OK ({detail})")
+    else:
+        print(f"FAILED ({detail})")
+        print("  The demo may not work correctly. Check demo/app.py")
+
+    devin_mode = os.environ.get("DEVIN_MODE", "stub")
+    print(f"  Devin mode: {devin_mode}")
     print(f"  Open http://localhost:{port}\n")
+
+    server = http.server.ThreadingHTTPServer(("", port), SAGEHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
