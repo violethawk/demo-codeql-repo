@@ -466,7 +466,7 @@
         clearTerminal();
         addLine('$ sage remediate ' + cwe, 'line-info');
         addLine('');
-        const lines = data.output.split('\n');
+        const lines = (data.output || '').split('\n');
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           let cls = 'line-info';
