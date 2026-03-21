@@ -13,8 +13,13 @@ import io
 import os
 import sys
 import threading
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
+
+# Job queue for async remediation
+_jobs: dict[str, dict] = {}  # job_id -> {status, result}
+_jobs_lock = threading.Lock()
 
 # Vulnerable app.py — the known-good starting state.
 # Hardcoded so the demo always starts from the vulnerable version,
@@ -395,14 +400,38 @@ HTML = """\
       addLine('');
 
       try {
-        const resp = await fetch('/api/remediate', {
+        // Start the job
+        const startResp = await fetch('/api/remediate', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({cwe: cwe}),
         });
-        const data = await resp.json();
+        const startData = await startResp.json();
+        const jobId = startData.job_id;
+
+        if (!jobId) throw new Error(startData.error || 'No job ID returned');
+
+        addLine('Processing... (polling for completion)', 'line-info');
+
+        // Poll until done
+        let data = null;
+        while (true) {{
+          await new Promise(r => setTimeout(r, 2000));
+          const pollResp = await fetch('/api/status/' + jobId);
+          const pollData = await pollResp.json();
+          if (pollData.status === 'running') {{
+            // Still working
+            continue;
+          }} else {{
+            data = pollData;
+            break;
+          }}
+        }}
 
         // Stream output with delay for visual effect
+        clearTerminal();
+        addLine('$ sage remediate ' + cwe, 'line-info');
+        addLine('');
         const lines = data.output.split('\\n');
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
@@ -555,17 +584,35 @@ HTML = """\
 
 class SAGEHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/" or self.path == "/index.html":
+        parsed = urlparse(self.path)
+
+        # Poll job status
+        if parsed.path.startswith("/api/status/"):
+            job_id = parsed.path.split("/")[-1]
+            with _jobs_lock:
+                job = _jobs.get(job_id)
+            if not job:
+                self._json_response(404, {"error": "job not found"})
+            elif job["status"] == "running":
+                self._json_response(200, {"status": "running", "job_id": job_id})
+            else:
+                self._json_response(200, job["result"])
+            return
+
+        # Existing GET handler
+        return self._handle_get(parsed)
+
+    def _handle_get(self, parsed):
+        if parsed.path in ("/", "/index.html"):
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
             self.wfile.write(HTML.encode())
-        elif self.path.startswith("/artifacts/"):
-            # Serve artifact files
-            file_path = Path("." + self.path)
+        elif parsed.path.startswith("/artifacts/"):
+            file_path = Path("." + parsed.path)
             if file_path.exists():
                 self.send_response(200)
-                self.send_header("Content-Type", "text/html" if self.path.endswith(".html") else "application/json")
+                self.send_header("Content-Type", "text/html" if parsed.path.endswith(".html") else "application/json")
                 self.end_headers()
                 self.wfile.write(file_path.read_bytes())
             else:
@@ -591,66 +638,19 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
             # Restore app.py before each run
             APP_PATH.write_text(APP_ORIGINAL)
 
-            # Capture pipeline output
-            from pipeline.store import init_db
-            from run_demo import process_alert
+            # Start remediation in background thread, return job ID
+            job_id = uuid.uuid4().hex[:8]
+            with _jobs_lock:
+                _jobs[job_id] = {"status": "running", "result": None}
 
-            old_stdout = sys.stdout
-            sys.stdout = captured = io.StringIO()
+            thread = threading.Thread(
+                target=self._run_remediation,
+                args=(job_id, cwe, fixture),
+                daemon=True,
+            )
+            thread.start()
 
-            try:
-                db_conn = init_db()
-                report = process_alert(fixture, "target_repo", db_conn=db_conn)
-                db_conn.close()
-            except Exception as e:
-                report = {"disposition": "ERROR", "error": str(e)}
-            finally:
-                sys.stdout = old_stdout
-
-            # Load notification artifact if it was written
-            notif = {}
-            notif_path = Path("artifacts/notification_payload.json")
-            if notif_path.exists():
-                try:
-                    notif = json.loads(notif_path.read_text())
-                except Exception:
-                    pass
-
-            pr_payload = {}
-            pr_path = Path("artifacts/pr_payload.json")
-            if pr_path.exists():
-                try:
-                    pr_payload = json.loads(pr_path.read_text())
-                except Exception:
-                    pass
-
-            routing = ROUTING_INFO.get(cwe, {})
-            devin_mode = os.environ.get("DEVIN_MODE", "stub")
-
-            # Extract Devin session data from report if present
-            devin_session = {
-                "mode": devin_mode,
-                "session_id": report.get("devin_session_id", ""),
-                "plan": report.get("remediation_plan"),
-                "insights": report.get("devin_insights"),
-                "pr_url": report.get("pr_url", ""),
-            }
-
-            self._json_response(200, {
-                "cwe": cwe,
-                "disposition": report.get("disposition", "ERROR"),
-                "output": captured.getvalue(),
-                "routing": routing,
-                "notification": notif,
-                "devin": devin_session,
-                "pr": {
-                    "title": pr_payload.get("title", ""),
-                    "branch": pr_payload.get("branch", ""),
-                    "reviewers": pr_payload.get("reviewers", []),
-                    "labels": pr_payload.get("labels", []),
-                    "url": pr_payload.get("url", ""),
-                },
-            })
+            self._json_response(200, {"status": "running", "job_id": job_id})
 
         elif parsed.path == "/api/reset":
             APP_PATH.write_text(APP_ORIGINAL)
@@ -662,6 +662,72 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
 
         else:
             self._json_response(404, {"error": "not found"})
+
+    @staticmethod
+    def _run_remediation(job_id: str, cwe: str, fixture: str):
+        """Run the pipeline in a background thread."""
+        from pipeline.store import init_db
+        from run_demo import process_alert
+
+        old_stdout = sys.stdout
+        sys.stdout = captured = io.StringIO()
+
+        try:
+            db_conn = init_db()
+            report = process_alert(fixture, "target_repo", db_conn=db_conn)
+            db_conn.close()
+        except Exception as e:
+            report = {"disposition": "ERROR", "error": str(e)}
+        finally:
+            sys.stdout = old_stdout
+
+        # Load artifacts
+        notif = {}
+        notif_path = Path("artifacts/notification_payload.json")
+        if notif_path.exists():
+            try:
+                notif = json.loads(notif_path.read_text())
+            except Exception:
+                pass
+
+        pr_payload = {}
+        pr_path = Path("artifacts/pr_payload.json")
+        if pr_path.exists():
+            try:
+                pr_payload = json.loads(pr_path.read_text())
+            except Exception:
+                pass
+
+        routing = ROUTING_INFO.get(cwe, {})
+        devin_mode = os.environ.get("DEVIN_MODE", "stub")
+
+        devin_session = {
+            "mode": devin_mode,
+            "session_id": report.get("devin_session_id", ""),
+            "plan": report.get("remediation_plan"),
+            "insights": report.get("devin_insights"),
+            "pr_url": report.get("pr_url", ""),
+        }
+
+        result = {
+            "status": "done",
+            "cwe": cwe,
+            "disposition": report.get("disposition", "ERROR"),
+            "output": captured.getvalue(),
+            "routing": routing,
+            "notification": notif,
+            "devin": devin_session,
+            "pr": {
+                "title": pr_payload.get("title", ""),
+                "branch": pr_payload.get("branch", ""),
+                "reviewers": pr_payload.get("reviewers", []),
+                "labels": pr_payload.get("labels", []),
+                "url": pr_payload.get("url", ""),
+            },
+        }
+
+        with _jobs_lock:
+            _jobs[job_id] = {"status": "done", "result": result}
 
     def _json_response(self, code, data):
         self.send_response(code)
@@ -677,7 +743,7 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
-    server = http.server.HTTPServer(("", port), SAGEHandler)
+    server = http.server.ThreadingHTTPServer(("", port), SAGEHandler)
     print(f"\n  SAGE Interactive Demo")
     print(f"  Open http://localhost:{port}\n")
     try:
