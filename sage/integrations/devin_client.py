@@ -41,8 +41,10 @@ POLL_INTERVAL_SECONDS = 10
 POLL_TIMEOUT_SECONDS = 600  # 10 minutes max
 
 # Terminal session statuses (v1 API)
-_TERMINAL_STATUSES = {"finished", "error", "stopped", "expired"}
-_SUCCESS_STATUSES = {"finished"}
+# "suspended" means Devin completed work but the session was paused —
+# treat as terminal and check structured_output for results.
+_TERMINAL_STATUSES = {"finished", "error", "stopped", "expired", "suspended"}
+_SUCCESS_STATUSES = {"finished", "suspended"}
 
 
 def _get_mode() -> str:
@@ -356,7 +358,7 @@ def _poll_session(session_id: str) -> dict:
 
 def _extract_pr_url(session_data: dict) -> str:
     """Extract the PR URL from a completed Devin session."""
-    prs = session_data.get("pull_requests", [])
+    prs = session_data.get("pull_requests") or []
     for pr in prs:
         url = pr.get("pr_url", "")
         if url:
