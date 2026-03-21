@@ -224,6 +224,16 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
                 self._json_response(200, job["result"])
             return
 
+        # KPI endpoint
+        if parsed.path == "/api/kpis":
+            from sage.pipeline import store
+            db_conn = store.init_db()
+            kpis = store.get_kpis(db_conn)
+            metrics = store.get_metrics(db_conn)
+            db_conn.close()
+            self._json_response(200, {"kpis": kpis, "metrics": metrics})
+            return
+
         # Existing GET handler
         return self._handle_get(parsed)
 

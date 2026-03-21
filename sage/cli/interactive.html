@@ -262,6 +262,31 @@
       </div>
     </div>
 
+    <!-- KPI Panel -->
+    <div id="kpi-panel" style="display:none;margin-top:1rem;animation:fadeIn 0.3s forwards">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--cyan);margin-bottom:0.6rem;font-weight:700">Governance KPIs</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:0.6rem">
+        <div class="route-card">
+          <h3>Outcome</h3>
+          <div class="route-item"><span class="route-label">SLA Compliance</span><span class="route-value" id="kpi-sla" style="font-size:0.85rem">—</span></div>
+          <div class="route-item"><span class="route-label">MTTR</span><span class="route-value" id="kpi-mttr" style="font-size:0.85rem">—</span></div>
+          <div class="route-item"><span class="route-label">Backlog</span><span class="route-value" id="kpi-backlog" style="font-size:0.85rem">—</span></div>
+        </div>
+        <div class="route-card">
+          <h3>System Effectiveness</h3>
+          <div class="route-item"><span class="route-label">Auto-Fix Rate</span><span class="route-value" id="kpi-auto" style="font-size:0.85rem">—</span></div>
+          <div class="route-item"><span class="route-label">PR Merge Rate</span><span class="route-value" id="kpi-merge" style="font-size:0.85rem">—</span></div>
+        </div>
+        <div class="route-card">
+          <h3>Governance</h3>
+          <div class="route-item"><span class="route-label">Unowned</span><span class="route-value" id="kpi-unowned" style="font-size:0.85rem">—</span></div>
+          <div class="route-item"><span class="route-label">SLA Breaches</span><span class="route-value" id="kpi-breaches" style="font-size:0.85rem">—</span></div>
+          <div class="route-item"><span class="route-label">Lifecycle</span><span class="route-value" id="kpi-lifecycle" style="font-size:0.85rem">—</span></div>
+        </div>
+      </div>
+      <div style="margin-top:0.5rem;font-size:0.7rem;color:var(--muted);font-style:italic" id="kpi-summary"></div>
+    </div>
+
     <div class="reset-bar">
       <button class="reset-btn" onclick="resetAll()">Reset All</button>
       <span class="status-text" id="status">Ready</span>
@@ -516,8 +541,9 @@
         await new Promise(r => setTimeout(r, 2000));
         narrate('routing');
 
-        // Populate routing panel
+        // Populate routing panel and update KPIs
         showRouting(data);
+        await updateKPIs();
       } catch (e) {
         addLine('Error: ' + e.message, 'line-warn');
         card.className = 'vuln-card';
@@ -598,8 +624,85 @@
 
       document.getElementById('status').textContent = 'Ready';
       document.getElementById('routing-panel').classList.remove('visible');
+      document.getElementById('kpi-panel').style.display = 'none';
       addLine('All findings reset to vulnerable state.', 'line-info');
       addLine('Click a card to begin.', 'line-info');
+    }
+
+    async function updateKPIs() {
+      try {
+        const resp = await fetch('/api/kpis');
+        const data = await resp.json();
+        const k = data.kpis;
+        const m = data.metrics;
+
+        if (!m.total) {
+          document.getElementById('kpi-panel').style.display = 'none';
+          return;
+        }
+
+        // Outcome
+        const slaRate = k.sla_total > 0 ? Math.round(k.sla_compliance_rate * 100) : 100;
+        const slaColor = slaRate >= 80 ? 'var(--green)' : slaRate >= 50 ? 'var(--amber)' : 'var(--red)';
+        const slaEl = document.getElementById('kpi-sla');
+        slaEl.textContent = slaRate + '% (' + k.sla_compliant + '/' + k.sla_total + ')';
+        slaEl.style.color = slaColor;
+
+        const mttr = k.mttr_hours;
+        document.getElementById('kpi-mttr').textContent = mttr < 1 ? '<1 min' : mttr.toFixed(1) + 'h';
+
+        const backlog = k.aging_backlog;
+        const backlogEl = document.getElementById('kpi-backlog');
+        if (backlog.breached > 0) {
+          backlogEl.textContent = backlog.breached + ' breached';
+          backlogEl.style.color = 'var(--red)';
+        } else if (backlog.at_risk > 0) {
+          backlogEl.textContent = backlog.at_risk + ' at risk';
+          backlogEl.style.color = 'var(--amber)';
+        } else {
+          backlogEl.textContent = backlog.within_sla + ' within SLA';
+          backlogEl.style.color = 'var(--green)';
+        }
+
+        // System Effectiveness
+        const autoRate = m.total > 0 ? Math.round((m.by_action['AUTO_REMEDIATE'] || 0) / m.total * 100) : 0;
+        document.getElementById('kpi-auto').textContent = autoRate + '% (' + (m.by_action['AUTO_REMEDIATE'] || 0) + '/' + m.total + ')';
+
+        const mergeEl = document.getElementById('kpi-merge');
+        if (k.total_prs > 0) {
+          const mergeRate = Math.round(k.pr_merge_rate * 100);
+          mergeEl.textContent = mergeRate + '% (' + k.merged + '/' + k.total_prs + ')';
+          mergeEl.style.color = mergeRate >= 60 ? 'var(--green)' : 'var(--amber)';
+        } else {
+          mergeEl.textContent = '—';
+          mergeEl.style.color = '';
+        }
+
+        // Governance
+        const unownedEl = document.getElementById('kpi-unowned');
+        unownedEl.textContent = k.unowned_findings === 0 ? 'PASS' : k.unowned_findings + ' unowned';
+        unownedEl.style.color = k.unowned_findings === 0 ? 'var(--green)' : 'var(--red)';
+
+        const breachEl = document.getElementById('kpi-breaches');
+        breachEl.textContent = k.sla_breach_count === 0 ? 'PASS' : k.sla_breach_count + ' breached';
+        breachEl.style.color = k.sla_breach_count === 0 ? 'var(--green)' : 'var(--red)';
+
+        const lcRate = Math.round(k.lifecycle_completion_rate * 100);
+        const lcEl = document.getElementById('kpi-lifecycle');
+        lcEl.textContent = lcRate + '% (' + k.lifecycle_completed + '/' + k.total + ')';
+        lcEl.style.color = lcRate >= 80 ? 'var(--green)' : lcRate >= 50 ? 'var(--amber)' : 'var(--red)';
+
+        // Summary
+        document.getElementById('kpi-summary').textContent =
+          m.total + ' finding(s) processed — ' +
+          (m.by_disposition['PR_READY'] || 0) + ' remediated, ' +
+          (m.by_disposition['NEEDS_HUMAN_REVIEW'] || 0) + ' escalated';
+
+        document.getElementById('kpi-panel').style.display = 'block';
+      } catch (e) {
+        // KPI fetch failed — not critical, hide panel
+        document.getElementById('kpi-panel').style.display = 'none';
+      }
     }
 
     // Initialize card code blocks from fixedCode data
