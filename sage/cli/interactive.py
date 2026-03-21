@@ -488,7 +488,6 @@ HTML = """\
           'Devin is generating test coverage...',
           'Devin is validating the changes...',
           'Devin is preparing the pull request...',
-          'Waiting for Devin session to complete...',
         ];
 
         while (true) {
@@ -498,8 +497,14 @@ HTML = """\
 
           if (pollData.status === 'running') {
             if (isDevinPath && devinMode === 'real') {
-              const step = devinSteps[Math.min(pollCount, devinSteps.length - 1)];
-              addLine('  ' + step, 'line-info');
+              if (pollCount < devinSteps.length) {
+                addLine('  ' + devinSteps[pollCount], 'line-info');
+              } else {
+                // After initial steps, show elapsed time instead of spamming
+                const elapsed = (pollCount - devinSteps.length + 1) * 2;
+                const statusEl = document.getElementById('status');
+                statusEl.textContent = 'Devin working... ' + elapsed + 's elapsed';
+              }
             }
             pollCount++;
             continue;
