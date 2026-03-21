@@ -472,17 +472,20 @@ def _remediate_real(alert: Alert) -> DevinSession:
     final_data = _poll_session(session_id)
     status = final_data.get("status", "error")
 
-    # 3. Extract plan from structured output
+    # 3. Extract plan and PR URL from structured output
     plan = _extract_plan(final_data)
+    pr_url = _extract_pr_url(final_data)
 
-    # 4. Fetch post-session insights
+    # 4. Determine success: terminal success status OR structured output with PR
+    succeeded = status in _SUCCESS_STATUSES or bool(pr_url)
+
+    # 5. Fetch post-session insights
     insights = SessionInsights()
-    if status in _SUCCESS_STATUSES:
+    if succeeded:
         insights = _fetch_insights(session_id)
 
-    # 5. Build result
-    if status in _SUCCESS_STATUSES:
-        pr_url = _extract_pr_url(final_data)
+    # 6. Build result
+    if succeeded:
         return DevinSession(
             session_id=session_id,
             disposition="PR_READY" if pr_url else "NEEDS_HUMAN_REVIEW",
