@@ -1,3 +1,4 @@
+import html
 import os
 import sqlite3
 
@@ -26,7 +27,7 @@ def search_user():
 @app.route("/search_page")
 def search_page():
     user_input = request.args.get("query", "")
-    return f"<h1>Results for {user_input}</h1>"
+    return f"<h1>Results for {html.escape(user_input)}</h1>"
 
 
 @app.route("/ping")
