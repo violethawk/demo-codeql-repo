@@ -1,7 +1,6 @@
 """Tests verifying CWE-78 command injection fix in demo/app.py."""
 
 import ast
-import textwrap
 from pathlib import Path
 from unittest.mock import patch
 
