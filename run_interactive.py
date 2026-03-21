@@ -16,9 +16,57 @@ import threading
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-# Store original app.py content for reset
+# Vulnerable app.py — the known-good starting state.
+# Hardcoded so the demo always starts from the vulnerable version,
+# regardless of what's on disk when the server launches.
 APP_PATH = Path("target_repo/app.py")
-APP_ORIGINAL = APP_PATH.read_text() if APP_PATH.exists() else ""
+APP_ORIGINAL = '''\
+import os
+import sqlite3
+
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+DATABASE = "users.db"
+
+
+def get_db():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+@app.route("/search")
+def search_user():
+    user_input = request.args.get("name", "")
+    query = f"SELECT * FROM users WHERE name = '{user_input}'"
+    cursor = get_db().cursor()
+    cursor.execute(query)
+    return jsonify([dict(r) for r in cursor.fetchall()])
+
+
+@app.route("/search_page")
+def search_page():
+    user_input = request.args.get("query", "")
+    return f"<h1>Results for {user_input}</h1>"
+
+
+@app.route("/ping")
+def ping_host():
+    host = request.args.get("host", "127.0.0.1")
+    os.system("ping -c 1 " + host)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
+'''
 
 # Fixed code snippets (pre-computed for instant display)
 FIXED_SNIPPETS = {
@@ -107,7 +155,7 @@ HTML = """\
     .header .sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
 
     /* Vulnerability cards */
-    .vuln-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .vuln-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
     .vuln-card { background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
                  padding: 1.25rem; cursor: pointer; transition: all 0.2s; position: relative; }
     .vuln-card:hover { border-color: var(--cyan); transform: translateY(-2px); }

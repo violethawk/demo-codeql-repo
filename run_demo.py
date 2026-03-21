@@ -77,7 +77,7 @@ def process_alert(
         _print(f"  Action: {action} (not eligible)")
         for reason in triage_result.reasons:
             _print(f"    - {reason}")
-        session = create_session(alert, "NEEDS_HUMAN_REVIEW", "LOW")
+        session = _create_session_stub(alert, "NEEDS_HUMAN_REVIEW", "LOW")
         notification = build_notification(
             alert, "NEEDS_HUMAN_REVIEW", "",
             integration_mode=session.integration_mode,
@@ -119,7 +119,7 @@ def process_alert(
         _print(f"  Action: ESCALATE (requires human review)")
         for reason in triage_result.reasons:
             _print(f"    - {reason}")
-        session = create_session(alert, "NEEDS_HUMAN_REVIEW", "MEDIUM")
+        session = _create_session_stub(alert, "NEEDS_HUMAN_REVIEW", "MEDIUM")
         notification = build_notification(
             alert, "NEEDS_HUMAN_REVIEW", "",
             integration_mode=session.integration_mode,
