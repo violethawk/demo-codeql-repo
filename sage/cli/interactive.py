@@ -239,6 +239,11 @@ class SAGEHandler(http.server.BaseHTTPRequestHandler):
 
     def _handle_get(self, parsed):
         if parsed.path in ("/", "/index.html"):
+            # Reset state on page load so a reload starts fresh
+            APP_PATH.write_text(APP_ORIGINAL)
+            db_path = Path("pipeline.db")
+            if db_path.exists():
+                db_path.unlink()
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
