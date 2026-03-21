@@ -85,10 +85,8 @@ FIXED_SNIPPETS = {
     cursor.execute("SELECT * FROM users WHERE name = ?", (user_input,))''',
     },
     "CWE-79": {
-        "before": '''    user_input = request.args.get("query", "")
-    return f"<h1>Results for {user_input}</h1>"''',
-        "after": '''    user_input = request.args.get("query", "")
-    return f"<h1>Results for {html.escape(user_input)}</h1>"''',
+        "before": '    user_input = request.args.get("query", "")\n    return f"&lt;h1&gt;Results for {user_input}&lt;/h1&gt;"',
+        "after": '    user_input = request.args.get("query", "")\n    return f"&lt;h1&gt;Results for {html.escape(user_input)}&lt;/h1&gt;"',
     },
     "CWE-78": {
         "before": '''    host = request.args.get("host", "127.0.0.1")
