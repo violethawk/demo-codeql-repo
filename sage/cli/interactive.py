@@ -98,6 +98,10 @@ FIXED_SNIPPETS = {
         "before": '''DATABASE_PASSWORD = "supersecret123"''',
         "after": '''DATABASE_PASSWORD = os.environ["DATABASE_PASSWORD"]''',
     },
+    "CWE-287": {
+        "before": '''if user.role == "admin" or debug_mode:''',
+        "after": '''if user.role == "admin":''',
+    },
 }
 
 FIXTURES = {
@@ -105,6 +109,7 @@ FIXTURES = {
     "CWE-79": "demo/fixtures/sample_alert_xss.json",
     "CWE-78": "demo/fixtures/sample_alert_cmdi.json",
     "CWE-798": "demo/fixtures/sample_alert_creds.json",
+    "CWE-287": "demo/fixtures/sample_alert_auth.json",
 }
 
 # Routing metadata for display
@@ -144,6 +149,15 @@ ROUTING_INFO = {
         "security_reviewer": "security-lead",
         "sla": "12h",
     },
+    "CWE-287": {
+        "action": "ESCALATE",
+        "team": "backend",
+        "channel": "#backend-security",
+        "reviewers": [],
+        "security_review": True,
+        "security_reviewer": "security-lead",
+        "sla": "12h",
+    },
 }
 
 HTML = """\
@@ -172,7 +186,7 @@ HTML = """\
     .header .sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
 
     /* Vulnerability cards */
-    .vuln-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .vuln-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
     .vuln-card { background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
                  padding: 1.25rem; cursor: pointer; transition: all 0.2s; position: relative; }
     .vuln-card:hover { border-color: var(--cyan); transform: translateY(-2px); }
@@ -311,6 +325,16 @@ HTML = """\
         <div class="code-block code-vuln" id="code-CWE-798">""" + FIXED_SNIPPETS["CWE-798"]["before"] + """</div>
         <div class="vuln-action">ESCALATE &mdash; human review only (~1s)</div>
       </div>
+
+      <div class="vuln-card" id="card-CWE-287" onclick="remediate('CWE-287')">
+        <div class="vuln-header">
+          <span class="vuln-cwe">CWE-287</span>
+          <span class="vuln-badge badge-vuln" id="badge-CWE-287">VULNERABLE</span>
+        </div>
+        <div class="vuln-name">Improper Authentication</div>
+        <div class="code-block code-vuln" id="code-CWE-287">""" + FIXED_SNIPPETS["CWE-287"]["before"] + """</div>
+        <div class="vuln-action">ESCALATE &mdash; human review only (~1s)</div>
+      </div>
     </div>
 
     <div class="terminal-wrapper">
@@ -415,6 +439,10 @@ HTML = """\
       'start-CWE-798': {
         title: 'Policy Decision: ESCALATE',
         body: 'Hardcoded credentials cannot be safely auto-remediated — the fix requires secret rotation and vault integration, not just a code change. The policy engine assigns ESCALATE: no auto-fix attempted, finding routed directly to the owning team and security lead. SLA is 12 hours (tighter than code fixes) because exposed credentials are an active risk.'
+      },
+      'start-CWE-287': {
+        title: 'Policy Decision: ESCALATE',
+        body: 'Authentication logic flaws require understanding the full auth flow — who can access what, under what conditions. Auto-remediation could break access control. The policy engine escalates to the backend team and security lead with a 12-hour SLA.'
       },
       'done-ESCALATE': {
         title: 'Escalated to Human Review',
@@ -699,7 +727,7 @@ HTML = """\
 
       await fetch('/api/reset', {method: 'POST'});
 
-      ['CWE-89', 'CWE-79', 'CWE-78', 'CWE-798'].forEach(cwe => {
+      ['CWE-89', 'CWE-79', 'CWE-78', 'CWE-798', 'CWE-287'].forEach(cwe => {
         const card = document.getElementById('card-' + cwe);
         const badge = document.getElementById('badge-' + cwe);
         const code = document.getElementById('code-' + cwe);

@@ -1,0 +1,21 @@
+{
+  "alert_id": "demo-005",
+  "rule_name": "Improper authentication check",
+  "severity": "high",
+  "cwe": "CWE-287",
+  "language": "python",
+  "repo_name": "demo-codeql-repo",
+  "default_branch": "main",
+  "file_path": "app.py",
+  "line_range": {
+    "start": 1,
+    "end": 5
+  },
+  "vulnerable_code_snippet": [
+    "if user.role == 'admin' or debug_mode:"
+  ],
+  "alert_description": "Authentication logic uses a debug bypass that could allow unauthorized access in production.",
+  "security_guidance": "Remove debug bypass from authentication checks. Use proper role-based access control.",
+  "owner_team": "backend",
+  "auto_fix_confidence": 0.1
+}
