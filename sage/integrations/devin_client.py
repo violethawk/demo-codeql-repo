@@ -340,14 +340,25 @@ def _create_remediation_session(alert: Alert) -> dict:
 
 
 def _poll_session(session_id: str) -> dict:
-    """Poll the Devin session until it reaches a terminal state."""
+    """Poll the Devin session until it reaches a terminal state or produces output.
+
+    Devin sessions may stay 'running' even after producing structured
+    output and opening a PR. We check for both terminal status AND
+    the presence of structured_output with a pr_url.
+    """
     elapsed = 0
 
     while elapsed < POLL_TIMEOUT_SECONDS:
         data = _api_request("GET", f"/session/{session_id}")
         status = data.get("status", "")
 
+        # Terminal status — done
         if status in _TERMINAL_STATUSES:
+            return data
+
+        # Still running but structured output is ready with a PR — treat as done
+        so = data.get("structured_output") or {}
+        if so.get("pr_url"):
             return data
 
         time.sleep(POLL_INTERVAL_SECONDS)
