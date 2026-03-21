@@ -1,6 +1,6 @@
 # SAGE Demo Script
 
-**60-90 second walkthrough for Loom or live presentation.**
+**~7 minutes. Framed as a presentation back to MedSecure's VP of Engineering and their team after a discovery call.**
 
 Try it yourself: **[live demo](https://demo-codeql-repo.onrender.com/)** (no setup required).
 
@@ -24,72 +24,173 @@ DEVIN_MODE=real DEVIN_API_KEY=your-key python -m sage interactive
 
 ## Script
 
-### Opening (10 seconds)
+### 1. Opening — Restate the Problem (30 seconds)
 
-> "The system I built is called SAGE: Security Automation & Governance Engine."
+> "Thanks for the time last week. I want to play back what I heard and show you what we built."
 >
-> "MedSecure's problem isn't detection — CodeQL already finds the issues. The problem is that findings don't reliably turn into fixed code, and the last audit flagged the backlog. SAGE closes that gap."
+> "Your problem isn't detection — CodeQL is already finding the vulnerabilities. The problem is the gap between detection and resolution. Findings pile up because they're not sprint work. Your security team files them, your engineers deprioritize them, and last audit you got flagged for the backlog. Nobody's closing the loop."
+>
+> "What I built is called SAGE — Security Automation & Governance Engine. It sits between CodeQL and your engineering workflow and closes that loop: triages findings, fixes what it can, escalates what it can't, enforces SLAs, and gives your security team an audit trail that proves follow-through."
 
-### Click CWE-89 — SQL Injection (15 seconds)
+---
 
-> "This SQL injection is a well-understood pattern. The policy engine assigns AUTO_REMEDIATE — a local handler fixes it instantly with a parameterized query. Standard code review. No Devin needed."
+### 2. Why Devin — Not Just Another Coding Agent (60 seconds)
 
-*Wait for the animation to finish before speaking to the next point.*
+*This section is a talking point — no clicking yet.*
+
+> "Before I show the demo, I want to explain why Devin is the right execution engine here, because you could reasonably ask: why not Copilot, or Cursor, or any other AI coding tool?"
+>
+> "The difference is workflow ownership. A coding assistant suggests a patch — an engineer still has to prompt it, evaluate the output, create the branch, open the PR, assign reviewers, and follow up. That's the work your engineers are already skipping."
+>
+> "Devin owns the full workflow. SAGE gives Devin a session with the vulnerability context — the CWE, the file, the vulnerable code. Devin analyzes the surrounding code, produces a remediation plan, implements the fix, writes tests, opens the PR, and returns structured output — root cause, changes made, reviewer notes. Your engineers interact with a pull request, not a security ticket."
+>
+> "And critically, Devin operates inside a policy-controlled loop. It doesn't decide what to fix or when — the policy engine does. Devin is the execution layer, not the decision-maker. That separation matters for governance."
+
+---
+
+### 3. Policy Design — How Decisions Are Made (45 seconds)
+
+> "The next question is: how does the system decide what gets auto-fixed versus what gets routed to humans? That can't be a judgment call — it needs a framework your security team can audit."
+>
+> "We anchor decisions to CISA's SSVC framework — Stakeholder-Specific Vulnerability Categorization. It evaluates each vulnerability on three axes: active exploitation, whether it's automatable at scale, and technical impact. SSVC gives a priority — Act, Attend, Track."
+>
+> "SAGE extends this with a fourth axis: fix confidence. Can a deterministic code transform reliably fix this class of vulnerability? The combination drives the routing:"
+>
+> - "High confidence — auto-remediate with a local handler. Instant, deterministic."
+> - "Medium confidence — Devin fixes it, but a security reviewer is required on the PR."
+> - "Low confidence — no auto-fix. Route to the owning team with a tight SLA."
+
+---
+
+### 4. Interactive Demo — Three Governance Paths (2.5 minutes)
+
+*Open the dashboard. Five vulnerability cards are visible, all red.*
+
+#### Click CWE-89 — SQL Injection (40 seconds)
+
+> "Let me show you the three paths in action. SQL injection first — the fast path."
+
+*Click the card. Wait for the animation to complete.*
+
+> "Fix confidence is HIGH — the canonical fix is parameterized queries. Single file, deterministic, no behavioral regression. The local handler fixes it in about one second."
 
 Point out:
-- The code transforms from red (vulnerable) to green (fixed)
-- The routing panel shows it goes to `#backend-security`
-- Two backend engineers are assigned as reviewers
+- Code transforms from red (vulnerable) to green (fixed)
+- Routing panel: notification to `#backend-security`, two backend engineers assigned as reviewers
+- Escalation path shown: 24h no review → remind owner, 48h → escalate to `#engineering-leads`
 
-### Click CWE-79 — XSS (20 seconds)
+> "Your engineers get a PR in their normal workflow. They review code, not a security ticket. If they don't review it within 24 hours, the system reminds them. At 48 hours, it escalates to their manager."
 
-> "Cross-site scripting is different. The fix depends on the output context. The policy engine assigns REMEDIATE_WITH_REVIEW — Devin is the execution engine here. It analyzes the surrounding code, produces a remediation plan, implements the fix, and opens a PR. A security reviewer is required."
+#### Click CWE-79 — Cross-Site Scripting (60 seconds)
 
-*Let the Devin execution panel animate before continuing.*
+> "XSS is different. The safe encoding depends on output context — HTML body, attribute, JavaScript. Fix confidence drops to MEDIUM. This is where Devin comes in."
+
+*Click the card. Let the Devin execution panel animate.*
+
+> "Devin creates a session, analyzes the vulnerable code, produces a remediation plan, implements the fix, and opens a PR. A security reviewer is required — that's policy-enforced, not optional."
 
 Point out:
 - Different execution path — Devin API, not local handler
-- The routing panel shows a security reviewer is added
-- The notification goes to `#frontend-security` — different team
+- Security reviewer added alongside the frontend engineer
+- Notification goes to `#frontend-security` — different team, different channel
+- PR includes remediation plan, root cause analysis, and reviewer notes
 
-> "This is why Devin, not just CodeQL autofix. CodeQL detects the pattern but can't fix it — the safe output encoding depends on rendering context. A generic copilot could suggest a patch, but it doesn't own the workflow. Devin creates a session, analyzes the code, plans the fix, opens the PR, and assigns reviewers."
+> "We have three real Devin-generated PRs merged in this repo — PRs 7, 11, and 12. The banner links to them. Devin analyzed the code, planned the fix, and opened the PRs autonomously."
 
-### Click CWE-798 — Hardcoded Credentials (15 seconds)
+#### Click CWE-798 — Hardcoded Credentials (30 seconds)
 
-> "Not everything should be auto-fixed. Hardcoded credentials are flagged ESCALATE — no automated patch. The policy engine routes this directly to the owning team and security. The finding gets a 12-hour SLA, and if no one acts, the enforcement layer escalates automatically."
+> "Not everything should be auto-fixed. Hardcoded credentials require secret rotation and vault integration — cross-service change, high regression risk. Fix confidence is LOW. The system escalates."
 
-*Let the card resolve before continuing.*
+*Click the card. Let it resolve.*
+
+> "No PR generated. The finding goes directly to the owning team and security with a 12-hour SLA. The system knows its limits."
 
 Point out:
-- Status shows ESCALATED, not COMPLETE — no PR was generated
-- Routing goes to `#security-escalations` — different channel than the remediated findings
-- This is the third governance path: auto-fix, AI-fix, route-to-humans
+- Status: ESCALATED, not FIXED
+- Routing: `#security-escalations` — different channel
+- Three governance paths demonstrated: deterministic fix, AI-assisted fix, route-to-humans
 
-### Enforcement (15 seconds)
+---
 
-> "Enforcement is MedSecure's core gap. SAGE runs `enforce` on an hourly cron. If no one reviews a finding within 24 hours, the owner gets a reminder. At 48 hours, it escalates to engineering leads. If SLA compliance drops below 80%, the system escalates all at-risk findings automatically. Nothing can silently stall."
+### 5. KPIs and Enforcement — Nothing Stalls Silently (75 seconds)
 
-> "The enforcement layer doesn't just report — it acts. KPIs drive system behavior, not dashboards."
+*Point to the KPI panel at the bottom of the dashboard.*
 
-### Closing (10 seconds)
+> "This is the part that directly addresses your audit problem. SAGE tracks nine KPIs, and — this is the key part — the enforcement layer *acts* on them. These aren't dashboards. They're triggers."
 
-> "Every step — detection, decision, execution, review, enforcement — is recorded in an immutable audit trail. The goal isn't to automate security theater. The goal is to make unresolved high-risk findings operationally impossible to ignore."
+Highlight two or three:
+- **SLA Compliance Rate** — if this drops below 80%, the system automatically escalates all at-risk findings
+- **Fix Rate** — PRs merged vs. opened. Below 60% signals engineers are rejecting automated fixes — a trust problem the system flags
+- **Unowned Findings** — target is zero. If any finding has no owner, the system auto-assigns it
+
+> "Enforcement runs on two layers. Per-finding: every finding has an SLA deadline. At 24 hours, the owner gets a Slack reminder. At 48 hours, it escalates to engineering leads. On SLA breach, security escalations gets notified."
+>
+> "And aggregate: the system evaluates KPI thresholds hourly. If compliance drops, it doesn't just report — it finds every at-risk finding and escalates them. If findings are unowned, it auto-assigns. The enforcement layer closes the gap that your audit flagged."
+
+> "And every action — every triage decision, every fix, every escalation, every human override — is recorded in an immutable audit trail with a timestamp, actor, and reason. When your compliance team asks 'what happened to finding X,' the answer is a query, not a meeting."
+
+---
+
+### 6. Next Steps (60 seconds)
+
+> "Here's what I'd propose."
+
+**Immediate (weeks 1-2):**
+
+> "We start with your top five CWEs by volume. We configure SAGE's policy engine for your environment — your teams, your Slack channels, your review owners — and connect it to your existing CodeQL output. We run it in dry-run mode first so your security team can validate the triage decisions before anything auto-fixes."
+>
+> "The goal for week one is: your security team sees every new CodeQL finding get triaged and routed automatically, with the right SLA. Week two, we turn on auto-remediation for the high-confidence patterns and let Devin start opening PRs for the medium-confidence ones."
+
+**Longer-term (month 2+):**
+
+> "Once the core pipeline is running, there are three natural extensions."
+>
+> "First, expanding CWE coverage. The policy registry is designed for this — adding a new vulnerability class is a four-step process: evaluate it against SSVC, assess fix confidence, add the policy entry, register the handler. Your security team can own this."
+>
+> "Second, integration depth. Right now SAGE supports Slack, GitHub, and Devin. But the notification and escalation layers are pluggable — Jira, PagerDuty, whatever your incident workflow uses."
+>
+> "Third, the metrics tell a story over time. MTTR trending down. SLA compliance trending up. Auto-remediation rate climbing as you add CWE handlers. That's the evidence your compliance team wants at the next audit — not a promise that you'll do better, but data showing you already are."
+
+---
+
+### 7. Closing (15 seconds)
+
+> "The bottom line: this isn't AI generating patches. It's a governed remediation system. Every finding is triaged, acted on, tracked, and either resolved or escalated — with an audit trail that proves it. The backlog stops growing, and your next audit looks different."
+
+---
+
+## Key lines to land
+
+1. "Your problem isn't detection. It's the gap between detection and resolution."
+2. "Devin owns the full workflow — your engineers interact with pull requests, not security tickets."
+3. "Devin operates inside a policy-controlled loop. It's the execution layer, not the decision-maker."
+4. "Policy decisions are anchored to CISA's SSVC framework — not judgment calls."
+5. "KPIs drive system behavior, not dashboards. Nothing can silently stall."
+6. "The audit trail proves follow-through — a query, not a meeting."
+
+---
+
+## Timing breakdown
+
+| Section | Duration | Format |
+|---|---|---|
+| 1. Opening — Restate the Problem | 30s | Talking point |
+| 2. Why Devin — Not Just Another Agent | 60s | Talking point |
+| 3. Policy Design — How Decisions Are Made | 45s | Talking point |
+| 4. Interactive Demo (3 cards) | 2.5m | Live demo |
+| 5. KPIs and Enforcement | 75s | Live demo + talking |
+| 6. Next Steps | 60s | Talking point |
+| 7. Closing | 15s | Talking point |
+| **Total** | **~7 minutes** | |
 
 ---
 
 ## If you have more time
 
 - Click the remaining cards (CWE-78 command injection, CWE-287 improper auth) to show all five governance paths
-- Click Reset, then process all five to show batch behavior
-- Switch to terminal and run `python -m sage metrics` to show the 9 KPIs
-- Run `python -m sage enforce --dry-run` to show enforcement detecting SLA breaches and KPI violations
+- Click Reset, then process all five to show batch behavior and watch KPIs update live
+- Run `python -m sage enforce --dry-run` to show enforcement detecting SLA breaches
+- Run `python -m sage metrics` to show all 9 KPIs from the CLI
 - Run `python -m sage override demo-001 status` to show the immutable audit trail
 - Open `artifacts/dashboard_all.html` to show the aggregate governance dashboard
-
----
-
-## Key lines to land
-
-1. "This is not AI generating patches. It is a governed remediation system."
-2. "Devin is the execution engine inside a policy-controlled loop — not a generic coding assistant."
-3. "The business outcome is not more PRs. It is fewer unresolved high-risk findings and better audit posture."
+- Show `sage.config.json` to demonstrate how teams, channels, reviewers, and KPI thresholds are configured
