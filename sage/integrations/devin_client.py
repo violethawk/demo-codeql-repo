@@ -38,7 +38,7 @@ from sage.pipeline.ingest import Alert
 
 DEVIN_API_BASE = "https://api.devin.ai/v1"
 POLL_INTERVAL_SECONDS = 10
-POLL_TIMEOUT_SECONDS = 600  # 10 minutes max
+POLL_TIMEOUT_SECONDS = 900  # 15 minutes max
 
 # Terminal session statuses (v1 API)
 # "suspended" means Devin completed work but the session was paused —
